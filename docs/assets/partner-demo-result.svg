@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="500" viewBox="0 0 1100 500">
+  <rect width="1100" height="500" fill="#f8fafc"/>
+  <style>.panel{fill:#fff;stroke:#cbd5e1;stroke-width:2;rx:20}.head{fill:#111827;rx:20}.t{font:700 23px Segoe UI,Arial;fill:#0f172a}.w{font:700 24px Segoe UI,Arial;fill:#fff}.s{font:17px Segoe UI,Arial;fill:#475569}.ok{fill:#ecfdf5;stroke:#10b981}.mid{fill:#eff6ff;stroke:#60a5fa}.code{font:15px Consolas,monospace;fill:#1e293b}</style>
+  <rect class="panel" x="55" y="45" width="990" height="410" rx="20"/>
+  <rect class="head" x="55" y="45" width="990" height="72" rx="20"/><text class="w" x="85" y="91">Как должен выглядеть проверяемый ответ</text>
+  <text class="t" x="85" y="155">1. Короткий вывод</text><text class="s" x="335" y="155">что найдено и насколько ответ точный</text>
+  <text class="t" x="85" y="205">2. Файл или объект</text><text class="s" x="335" y="205">что открыть в 1С или в выгрузке</text>
+  <rect class="mid" x="85" y="235" width="900" height="80" rx="14"/><text class="t" x="110" y="270">3. Фрагмент</text><text class="code" x="280" y="270">не общая болтовня, а конкретное место для проверки</text>
+  <rect class="ok" x="85" y="345" width="900" height="70" rx="14"/><text class="t" x="110" y="385">4. Как проверить руками</text><text class="s" x="405" y="385">партнёр сверяет ответ со своей 1С</text>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="430" viewBox="0 0 1100 430">
+  <rect width="1100" height="430" fill="#f8fafc"/>
+  <style>.box{fill:#fff;stroke:#cbd5e1;stroke-width:2;rx:18}.safe{fill:#ecfdf5;stroke:#10b981}.warn{fill:#fffbeb;stroke:#f59e0b}.bad{fill:#fef2f2;stroke:#ef4444}.t{font:700 21px Segoe UI,Arial;fill:#0f172a}.s{font:16px Segoe UI,Arial;fill:#475569}.arr{stroke:#2563eb;stroke-width:4;marker-end:url(#a)}</style>
+  <defs><marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#2563eb"/></marker></defs>
+  <rect class="box safe" x="35" y="70" width="240" height="125" rx="18"/><text class="t" x="62" y="112">Копия 1С</text><text class="s" x="62" y="145">выгрузка конфигурации</text><text class="s" x="62" y="170">остаётся у партнёра</text>
+  <line class="arr" x1="290" y1="132" x2="390" y2="132"/>
+  <rect class="box safe" x="405" y="70" width="250" height="125" rx="18"/><text class="t" x="432" y="112">Локальный индекс</text><text class="s" x="432" y="145">поиск по файлам</text><text class="s" x="432" y="170">на его компьютере</text>
+  <line class="arr" x1="670" y1="132" x2="770" y2="132"/>
+  <rect class="box safe" x="785" y="70" width="280" height="125" rx="18"/><text class="t" x="812" y="112">Проверяемый ответ</text><text class="s" x="812" y="145">файл + место + объяснение</text><text class="s" x="812" y="170">человек сверяет руками</text>
+  <rect class="box warn" x="95" y="265" width="420" height="100" rx="18"/><text class="t" x="125" y="305">Если нужен AI</text><text class="s" x="125" y="335">ключ должен быть партнёра или временный тестовый с лимитом</text>
+  <rect class="box bad" x="585" y="265" width="420" height="100" rx="18"/><text class="t" x="615" y="305">Что нельзя</text><text class="s" x="615" y="335">не подключать боевую базу и не отправлять выгрузку исполнителю</text>
+</svg>

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "0.1.0",
+  "profile": "corporate-local-readonly",
+  "description": "Baseline policy for a controlled on-premise 1C AI Workbench pilot.",
+  "rules": {
+    "no_auto_installers": true,
+    "no_network_calls_in_checks": true,
+    "read_only_by_default": true,
+    "live_bridges_disabled_by_default": true,
+    "write_flows_require_explicit_gate": true,
+    "external_assistant_is_operator_decision": true,
+    "client_owned_api_keys_only": true
+  },
+  "required_disabled_mcp_servers": [
+    "live-1c-bridge",
+    "1c-ibcmd"
+  ],
+  "required_safe_environment": {
+    "IBCMD_ALLOW_WRITE": "0"
+  },
+  "required_docs": [
+    "docs/SECURITY_NOTES.md",
+    "docs/MCP_SETUP_ASSISTANT.md",
+    "docs/WINDOWS_EXE_INSTALLER.md"
+  ],
+  "ignored_runtime_artifacts": [
+    "generated/",
+    "logs/",
+    "dist/",
+    ".opencode/",
+    ".qoder/",
+    ".codegraph/"
+  ],
+  "allowed_report_outputs": [
+    "generated/reports/",
+    "logs/"
+  ]
+}

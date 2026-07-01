@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>1C AI Dev Workbench — локальный AI-навигатор по 1С | Демо для первого клиента</title>
+  <style>
+    :root {
+      --bg:#f5f7fb; --ink:#111827; --muted:#64748b; --card:#ffffff; --line:#e5e7eb;
+      --blue:#2563eb; --blue2:#1d4ed8; --green:#059669; --red:#dc2626; --amber:#d97706;
+      --dark:#0f172a; --softblue:#eff6ff; --softgreen:#ecfdf5; --softamber:#fffbeb; --softred:#fef2f2;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Segoe UI, Arial, sans-serif; line-height:1.58; color:var(--ink); background:var(--bg); }
+    a { color:var(--blue2); }
+    .wrap { max-width:1220px; margin:auto; padding:30px 22px 70px; }
+    .hero { background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 60%,#2563eb 100%); color:white; padding:42px; border-radius:28px; box-shadow:0 22px 65px rgba(15,23,42,.24); }
+    .hero h1 { margin:0 0 14px; font-size:44px; line-height:1.07; letter-spacing:-.03em; }
+    .hero p { font-size:20px; max-width:960px; color:#e8eefc; margin:10px 0; }
+    .badges { margin-top:18px; display:flex; flex-wrap:wrap; gap:10px; }
+    .badge { display:inline-block; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.26); padding:8px 13px; border-radius:999px; font-size:14px; }
+    .section { margin-top:26px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(292px,1fr)); gap:18px; }
+    .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:18px; }
+    .card { background:var(--card); padding:24px; border-radius:22px; box-shadow:0 10px 34px rgba(15,23,42,.075); border:1px solid var(--line); }
+    .card h2,.card h3 { margin-top:0; color:#0f172a; line-height:1.2; }
+    .lead { font-size:19px; color:#243044; }
+    .muted { color:var(--muted); }
+    .ok { color:var(--green); font-weight:800; }
+    .warn { color:var(--amber); font-weight:800; }
+    .bad { color:var(--red); font-weight:800; }
+    .blue { color:var(--blue2); font-weight:800; }
+    code { background:#eef2ff; padding:2px 7px; border-radius:7px; font-size:.94em; }
+    pre { background:#0b1220; color:#e5edf8; padding:16px; border-radius:15px; overflow:auto; white-space:pre-wrap; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; }
+    th,td { text-align:left; border-bottom:1px solid var(--line); padding:12px; vertical-align:top; }
+    th { background:#f1f5f9; }
+    .step { display:flex; gap:14px; margin:15px 0; }
+    .num { min-width:36px; height:36px; display:grid; place-items:center; border-radius:50%; background:#dbeafe; color:#1d4ed8; font-weight:900; }
+    .quote { border-left:5px solid var(--blue); padding:15px 18px; background:var(--softblue); border-radius:14px; }
+    .success { border-left:5px solid var(--green); background:var(--softgreen); }
+    .risk { border-left:5px solid var(--amber); background:var(--softamber); }
+    .danger { border-left:5px solid var(--red); background:var(--softred); }
+    .result { border:1px solid #bfdbfe; background:#f8fbff; }
+    .result-head { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+    .pill { padding:4px 9px; border-radius:999px; font-size:13px; font-weight:800; }
+    .pill-ok { background:#d1fae5; color:#065f46; }
+    .pill-mid { background:#fef3c7; color:#92400e; }
+    .before-after { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .before { background:#fff1f2; border-left:5px solid #ef4444; }
+    .after { background:#ecfdf5; border-left:5px solid #10b981; }
+    .cta { background:#111827; color:white; padding:30px; border-radius:24px; }
+    .cta h2 { color:white; }
+    .small { font-size:14px; }
+    .kbd { display:inline-block; background:#111827; color:white; border-radius:6px; padding:1px 7px; font-size:13px; }
+    .flow-card { position:relative; overflow:hidden; }
+    .flow-card::before { content:""; position:absolute; inset:0 0 auto 0; height:5px; background:linear-gradient(90deg,var(--blue),#10b981); }
+    .flow-index { width:34px; height:34px; display:inline-grid; place-items:center; border-radius:10px; background:#dbeafe; color:#1d4ed8; font-weight:900; margin-bottom:10px; }
+    .flow-action { margin-top:12px; padding:10px 12px; border-radius:12px; background:#f8fafc; border:1px solid #dbeafe; }
+    .flow-outcome { margin-top:10px; color:#065f46; font-weight:700; }
+    .print-only { display:none; }
+    @media (max-width:760px) { .hero h1{font-size:34px}.hero{padding:28px}.grid2,.before-after{grid-template-columns:1fr} }
+    @media print {
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      body { background:#fff; color:#000; font-size:11pt; line-height:1.45; }
+      .wrap { max-width:none; padding:0; }
+      .hero { background:#fff; color:#000; padding:18px 0; border-radius:0; box-shadow:none; border-bottom:2px solid #000; }
+      .hero h1 { font-size:22pt; color:#000; }
+      .hero p { color:#000; font-size:12pt; }
+      .badges { display:none; }
+      .card, .result, .before, .after { box-shadow:none; border:1px solid #ccc; border-radius:8px; background:#fff !important; }
+      .before { border-left:4px solid #dc2626; }
+      .after { border-left:4px solid #059669; }
+      .success { border-left:4px solid #059669; background:#fff; }
+      .risk { border-left:4px solid #d97706; background:#fff; }
+      .danger { border-left:4px solid #dc2626; background:#fff; }
+      .quote { background:#fff; border-left:4px solid #2563eb; }
+      .cta { background:#fff; color:#000; border:2px solid #000; }
+      .cta h2 { color:#000; }
+      pre { background:#f5f5f5; color:#000; border:1px solid #ccc; }
+      code { background:#f5f5f5; color:#000; }
+      a { color:#000; text-decoration:underline; }
+      .grid, .grid2, .before-after { display:block; }
+      .grid > .card, .grid2 > .card, .before-after > .card { margin-bottom:14px; page-break-inside:avoid; }
+      .section { margin-top:16px; }
+      h1, h2, h3 { color:#000; page-break-after:avoid; }
+      table { font-size:10pt; }
+      th { background:#f0f0f0; }
+      .pill { border:1px solid #999; }
+      .print-only { display:block; margin-bottom:8px; font-size:10pt; color:#555; }
+      .no-print { display:none; }
+      .page-break { page-break-before:always; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="print-only"><strong>1C AI Dev Workbench</strong> — локальный AI-навигатор по вашей 1С-конфигурации.<br>Демо для первого клиента</div>
+    <h1>Найдите ответ в своей 1С за минуты</h1>
+    <p><strong>1C AI Dev Workbench</strong> — локальный AI-навигатор по вашей 1С-конфигурации. Берёт копию 1С, находит нужное место и показывает, что проверить руками. Без изменения базы и без отправки файлов исполнителю.</p>
+    <div class="badges">
+      <span class="badge">Для владельца бизнеса</span>
+      <span class="badge">Для руководителя 1С</span>
+      <span class="badge">Для первого аудита</span>
+      <span class="badge">Работает локально</span>
+      <span class="badge">Ответ с доказательством</span>
+    </div>
+  </div>
+
+  <div class="section grid2">
+    <div class="card result">
+      <h2>🚦 Readiness Dashboard</h2>
+      <p class="lead">Один экран отвечает: стенд готов или заблокирован, и что делать дальше.</p>
+      <div class="result-head"><span class="pill pill-mid">Generated by healthcheck</span><code>generated/reports/readiness-report.html</code></div>
+      <ol>
+        <li>Запустите <code>START_HERE.ps1</code>.</li>
+        <li>Выберите пункт <strong>1</strong>: healthcheck + readiness-report.</li>
+        <li>Если статус <span class="ok">Ready</span> — переходите к первому поиску и Prompt Gallery.</li>
+        <li>Если статус <span class="bad">Blocked</span> — выполните подсказку <strong>Next step</strong> в отчёте.</li>
+      </ol>
+    </div>
+    <div class="card success">
+      <h2>⏱ Первые 10 минут</h2>
+      <p class="lead">После зелёного setup пользователь не остаётся перед пустым экраном.</p>
+      <ol>
+        <li><strong>Dump</strong>: положить выгрузку в <code>C:\1c-ai-client\dump</code>.</li>
+        <li><strong>Index</strong>: пункт 7 в <code>START_HERE.ps1</code>.</li>
+        <li><strong>Health</strong>: пункт 1 создаёт readiness report.</li>
+        <li><strong>First search</strong>: пункт 4 ищет <code>Контрагенты</code>.</li>
+        <li><strong>AI scenario</strong>: открыть <code>prompts/onboard.md</code> или <code>prompts/risk-scan.md</code>.</li>
+      </ol>
+      <p class="small">Подробный маршрут: <code>docs/FIRST_10_MINUTES.md</code></p>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>⚡ First 10 Minutes — 5 быстрых действий</h2>
+    <p class="lead">Пять CTA-карточек превращают витрину в первый маршрут: проверить стенд, выбрать роль, получить первый результат и подключить AI-клиент.</p>
+    <div class="grid">
+      <div class="card flow-card">
+        <div class="flow-index">1</div>
+        <h3>Run Readiness</h3>
+        <p>Проверить, готов ли локальный стенд к показу или работе.</p>
+        <div class="flow-action"><code>START_HERE.ps1</code> → пункт <strong>1</strong></div>
+        <div class="flow-outcome">Outcome: <code>readiness-report.html</code> со статусом Ready / Blocked.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">2</div>
+        <h3>Open First 10 Minutes</h3>
+        <p>Открыть короткую инструкцию без чтения всех docs.</p>
+        <div class="flow-action"><code>START_HERE.ps1</code> → пункт <strong>17</strong></div>
+        <div class="flow-outcome">Outcome: маршрут dump → index → health → search.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">3</div>
+        <h3>Choose Role Pack</h3>
+        <p>Выбрать вопросы под роль: техлид, разработчик или партнёрский показ.</p>
+        <div class="flow-action"><code>demo-questions/questions_*.md</code></div>
+        <div class="flow-outcome">Outcome: готовые вопросы и ожидаемый формат ответа.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">4</div>
+        <h3>Run Local Search</h3>
+        <p>Проверить пользу без AI-клиента: поиск по индексу 1С.</p>
+        <div class="flow-action"><code>START_HERE.ps1</code> → пункт <strong>4</strong></div>
+        <div class="flow-outcome">Outcome: найден файл/модуль, который можно открыть руками.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">5</div>
+        <h3>Open MCP Setup Assistant</h3>
+        <p>Подключить opencode / Claude Code / Cursor / VS Code по готовому маршруту.</p>
+        <div class="flow-action"><code>START_HERE.ps1</code> → пункт <strong>18</strong></div>
+        <div class="flow-outcome">Outcome: AI-клиент знает, какой MCP server запускать.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>🧩 Integration Packs</h2>
+    <p class="lead">Curated pack-и не ставят сторонние инструменты автоматически. Они показывают, какой контур включать дальше и какой smoke check должен подтвердить готовность.</p>
+    <div class="grid">
+      <div class="card flow-card">
+        <div class="flow-index">Q</div>
+        <h3>BSL Quality</h3>
+        <p>BSL Language Server и SonarQube BSL как слой диагностики, explain/fix и quality gates.</p>
+        <div class="flow-action">BSL Quality</div>
+        <div class="flow-outcome">Next: добавить локальный check script перед статусом supported.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">T</div>
+        <h3>Testing</h3>
+        <p>OneScript, vanessa-runner, Vanessa Automation и YAxUnit как будущий контур тестов.</p>
+        <div class="flow-action"><code>configs/integration-packs.json</code> → testing</div>
+        <div class="flow-outcome">Next: начать с OneScript + vanessa-runner smoke.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">R</div>
+        <h3>Review</h3>
+        <p>ai-review, Prompt Gallery, AI Rules и Risk Scan как основа review workflow.</p>
+        <div class="flow-action"><code>prompts/review-bsl.md</code> + <code>scripts/10_risk_scan.ps1</code></div>
+        <div class="flow-outcome">Next: собрать один canonical local review flow.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">V</div>
+        <h3>VS Code Cockpit</h3>
+        <p>1C: Platform Tools — UX reference для единой панели команд, тестов, AI/MCP.</p>
+        <div class="flow-action">1C: Platform Tools</div>
+        <div class="flow-outcome">Next: заимствовать UX-паттерны, не обещая dependency.</div>
+      </div>
+      <div class="card flow-card">
+        <div class="flow-index">Ref</div>
+        <h3>Reference</h3>
+        <p>Confaster и Landscape1C как market/UX reference-only слой без прямого reuse.</p>
+        <div class="flow-action">1C: Platform Tools</div>
+        <div class="flow-outcome">Next: держать позиционирование и benchmark честными.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section grid2">
+    <div class="card result">
+      <h2>👥 Quickstart по ролям</h2>
+      <p class="lead">Не надо начинать с одинаковых вопросов для всех.</p>
+      <ul>
+        <li><code>demo-questions/questions_1c_lead.md</code> — для техлида</li>
+        <li><code>demo-questions/questions_developer_workflow.md</code> — для разработчика</li>
+        <li><code>demo-questions/questions_partner_demo.md</code> — для партнёрского показа</li>
+      </ul>
+    </div>
+    <div class="card result">
+      <h2>🔌 MCP Setup Assistant</h2>
+      <p class="lead">Если индекс готов, следующий ход — подключить AI-клиент без ручной охоты по документации.</p>
+      <ol>
+        <li>Сначала открыть readiness dashboard.</li>
+        <li>Потом открыть <code>docs/MCP_SETUP_ASSISTANT.md</code>.</li>
+        <li>Выбрать opencode, Claude Code или шаблон из <code>configs/</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="section before-after">
+    <div class="card before">
+      <h2>Обычно</h2>
+      <p class="lead">“Почему сумма не та?” превращается в расследование.</p>
+      <ul>
+        <li>надо искать 1С-специалиста;</li>
+        <li>надо вспоминать старые доработки;</li>
+        <li>поиск занимает десятки минут или часы;</li>
+        <li>результат сложно проверить руководителю.</li>
+      </ul>
+    </div>
+    <div class="card after">
+      <h2>С 1C AI Dev Workbench</h2>
+      <p class="lead">Вопрос превращается в конкретное место проверки.</p>
+      <ul>
+        <li>видно, какой объект найден;</li>
+        <li>видно, какой файл открыть;</li>
+        <li>видно, что именно проверить;</li>
+        <li>можно передать 1С-специалисту готовую подсказку.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>Что показываем сегодня</h2>
+    <p class="lead">Учебный пример 1С про автосервис. Это безопасный демо-образец: не база клиента, не коммерческая тайна.</p>
+    <table>
+      <tr><th>Показатель</th><th>Что есть</th><th>Зачем это бизнесу</th></tr>
+      <tr><td>Файлы 1С</td><td>проверяются healthcheck</td><td>Есть где искать реальные места</td></tr>
+      <tr><td>Найденные действия</td><td>считаются из текущего индекса</td><td>Можно находить расчёты и проверки</td></tr>
+      <tr><td>Связи внутри кода</td><td>считаются из текущего индекса</td><td>Можно понимать, что за чем вызывается</td></tr>
+      <tr><td>Состояние стенда</td><td>запустите <code>scripts\06_healthcheck.ps1</code></td><td>Статус должен подтверждаться перед показом</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Три демонстрационных вопроса</h2>
+    <div class="grid">
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">Точно найдено</span><b>Сумма заказ-наряда</b></div>
+        <p><b>Бизнес-вопрос:</b> почему итоговая сумма в заказе такая?</p>
+        <p><b>Что найдено:</b> сумма считается в форме документа <code>ЗаказНаряд</code>.</p>
+        <p><b>Файл:</b> <code>Documents/ЗаказНаряд/Forms/ФормаДокумента/Ext/Form/Module.bsl</code></p>
+        <p><b>Проверить:</b> цена × количество, затем сложение всех строк в общую сумму.</p>
+        <p><b>Польза:</b> быстро понятно, где искать ошибку в расчёте.</p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">Точно найдено</span><b>Запись продаж</b></div>
+        <p><b>Бизнес-вопрос:</b> почему отчёт по продажам не сходится?</p>
+        <p><b>Что найдено:</b> продажи записывает документ <code>Реализация</code>.</p>
+        <p><b>Файл:</b> <code>Documents/Реализация/Ext/ObjectModule.bsl</code></p>
+        <p><b>Проверить:</b> строки с <code>Движения.Продажи</code>.</p>
+        <p><b>Польза:</b> специалист сразу видит, какой документ влияет на продажи.</p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">План проверки</span><b>Новое поле в товаре</b></div>
+        <p><b>Бизнес-вопрос:</b> что затронет добавление нового поля в товар/услугу?</p>
+        <p><b>Что найдено:</b> карточка, список и описание <code>Номенклатуры</code>.</p>
+        <p><b>Файлы:</b> <code>Catalogs/Номенклатура...</code></p>
+        <p><b>Проверить:</b> формы, документы продажи/поступления, отчёты.</p>
+        <p><b>Польза:</b> меньше риск забыть место, которое сломается после доработки.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>Новый пример: список клиентов на букву “А”</h2>
+    <p class="lead">Это хороший вопрос от бизнеса, потому что он не про код, а про понятную задачу: получить список клиентов.</p>
+    <div class="grid2">
+      <div>
+        <h3>Что найдено</h3>
+        <p>Отдельного готового отчёта “клиенты на букву А” в демо-примере нет.</p>
+        <p>Но есть готовый список контрагентов:</p>
+        <p><code>Catalogs/Контрагенты/Forms/ФормаСписка/Ext/Form.xml</code></p>
+        <p>В нём уже есть поля: наименование, код, тип, телефон, договор, комментарий.</p>
+      </div>
+      <div>
+        <h3>Что предложить</h3>
+        <ul>
+          <li><b>Быстро:</b> использовать фильтр “название начинается с А”.</li>
+          <li><b>Удобно:</b> сделать отдельный отчёт с выбором буквы.</li>
+          <li><b>Полезно для продаж:</b> добавить фильтры “есть телефон”, “тип клиента”, “есть договор”.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>🧠 Галерея сценариев (Prompt Gallery)</h2>
+    <p class="lead">10 готовых сценариев для AI-агента. Не надо придумывать запрос — выбери задачу.</p>
+    <div class="grid">
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">explain-module</span><b>Разбор модуля</b></div>
+        <p><b>Что делает:</b> краткий разбор модуля 1С: назначение, экспорт, риски.</p>
+        <p><b>Формат:</b> evidence-first — объект, файл, процедура, уверенность.</p>
+        <p><code>prompts/explain-module.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">review-bsl</span><b>Ревью BSL-кода</b></div>
+        <p><b>Что делает:</b> проверка модуля по эвристикам: длинные процедуры, запросы в циклах, вложенность.</p>
+        <p><b>Формат:</b> таблица замечаний с severity и строкой.</p>
+        <p><code>prompts/review-bsl.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">plan-refactor</span><b>План рефакторинга</b></div>
+        <p><b>Что делает:</b> строит план изменений: кто вызывает, что зависит, порядок шагов, риски.</p>
+        <p><b>Формат:</b> граф зависимостей + поэтапный план.</p>
+        <p><code>prompts/plan-refactor.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-ok">risk-scan</span><b>Сканирование рисков</b></div>
+        <p><b>Что делает:</b> прогон эвристик по всей конфигурации перед релизом/аудитом.</p>
+        <p><b>Формат:</b> таблица рисков с severity, count, примерами.</p>
+        <p><code>prompts/risk-scan.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">find-object</span><b>Поиск использования объекта</b></div>
+        <p><b>Что делает:</b> находит все места, где упоминается объект метаданных в коде.</p>
+        <p><b>Формат:</b> группировка по типам использования + топ-5 мест.</p>
+        <p><code>prompts/find-object.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">analyze-query</span><b>Анализ запроса</b></div>
+        <p><b>Что делает:</b> парсит текст запроса 1С, определяет затронутые объекты и таблицы.</p>
+        <p><b>Формат:</b> карта влияния с уверенностью.</p>
+        <p><code>prompts/analyze-query.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">docgen</span><b>Генерация документации</b></div>
+        <p><b>Что делает:</b> собирает данные из индекса и формирует Markdown-документацию модуля или объекта.</p>
+        <p><b>Формат:</b> назначение, экспорты, объекты, file paths.</p>
+        <p><code>prompts/docgen.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">find-similar</span><b>Поиск похожих реализаций</b></div>
+        <p><b>Что делает:</b> ищет семантически похожие функции/объекты для унификации.</p>
+        <p><b>Формат:</b> список похожих мест + общий паттерн.</p>
+        <p><code>prompts/find-similar.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">audit-metadata</span><b>Аудит метаданных</b></div>
+        <p><b>Что делает:</b> оценивает структуру метаданных — неиспользуемые объекты, дубли, нейминг.</p>
+        <p><b>Формат:</b> таблица с рекомендациями.</p>
+        <p><code>prompts/audit-metadata.md</code></p>
+      </div>
+      <div class="card result">
+        <div class="result-head"><span class="pill pill-mid">onboard</span><b>Онбординг конфигурации</b></div>
+        <p><b>Что делает:</b> генерирует карту конфигурации для нового разработчика.</p>
+        <p><b>Формат:</b> бизнес-области, топ-10 сложных модулей, точки входа.</p>
+        <p><code>prompts/onboard.md</code></p>
+      </div>
+    </div>
+    </div>
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:600;color:var(--accent)">+ ещё 5 новых сценариев (v2)</summary>
+      <div class="grid" style="margin-top:12px">
+        <div class="card result">
+          <div class="result-head"><span class="pill pill-ok">find-by-pattern</span><b>Поиск по шаблону</b></div>
+          <p><b>Что делает:</b> ищет код по regex-паттерну в телах функций, группирует аномалии.</p>
+          <p><b>Формат:</b> таблица вхождений с группировкой по объектам.</p>
+          <p><code>prompts/find-by-pattern.md</code></p>
+        </div>
+        <div class="card result">
+          <div class="result-head"><span class="pill pill-ok">debug-print</span><b>Отладочная печать</b></div>
+          <p><b>Что делает:</b> предлагает места для вставки Сообщить() / ЗаписьЖурналаРегистрации() для диагностики.</p>
+          <p><b>Важно:</b> не меняет логику, помечает // DEBUG.</p>
+          <p><code>prompts/debug-print.md</code></p>
+        </div>
+        <div class="card result">
+          <div class="result-head"><span class="pill pill-ok">trace-flow</span><b>Трассировка потока</b></div>
+          <p><b>Что делает:</b> строит дерево вызовов от точки входа до результата, глубиной до 3-4.</p>
+          <p><b>Формат:</b> ascii-дерево с файлами и замечаниями.</p>
+          <p><code>prompts/trace-flow.md</code></p>
+        </div>
+        <div class="card result">
+          <div class="result-head"><span class="pill pill-mid">compare-versions</span><b>Сравнение версий</b></div>
+          <p><b>Что делает:</b> сравнивает два дампа (baseline vs candidate) — структура, размеры, изменения.</p>
+          <p><b>Требует:</b> source-mirror-baseline/ рядом с source-mirror/.</p>
+          <p><code>prompts/compare-versions.md</code></p>
+        </div>
+        <div class="card result">
+          <div class="result-head"><span class="pill pill-ok">query-optimizer</span><b>Оптимизация запроса</b></div>
+          <p><b>Что делает:</b> анализ текста запроса на типовые проблемы производительности 1С.</p>
+          <p><b>Формат:</b> таблица проблем + оптимизированный запрос.</p>
+          <p><code>prompts/query-optimizer.md</code></p>
+        </div>
+      </div>
+    </details>
+    <p class="small" style="margin-top:10px">Все сценарии используют <code>expected_answer_format</code> и <code>AI_RULES.md</code>. Полный каталог: <code>prompts/*.md</code></p>
+  </div>
+
+  <div class="section card">
+    <h2>📋 Правила AI (Scoped AI Rules)</h2>
+    <p class="lead">Path-scoped правила для разных типов объектов 1С — AI-агент учитывает их в ответах.</p>
+    <div class="grid2">
+      <div>
+        <h3>Глобальные</h3>
+        <ul>
+          <li><code>AI_RULES.md</code> — evidence-first, read-only, confidence labelling</li>
+          <li>Формат ответа, анти-паттерны, приоритет правил</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Path-scoped (rules/)</h3>
+        <ul>
+          <li><code>forms.md</code> — управляемые формы</li>
+          <li><code>common-modules.md</code> — общие модули</li>
+          <li><code>documents.md</code> — документы</li>
+          <li><code>catalogs.md</code> — справочники</li>
+          <li><code>registers.md</code> — регистры</li>
+          <li><code>reports.md</code> — отчёты и обработки</li>
+          <li><code>queries.md</code> — запросы</li>
+        </ul>
+      </div>
+    </div>
+    <p>Приоритет: path-scoped > <code>AI_RULES.md</code> > навыки cc-1c-skills.</p>
+  </div>
+
+  <div class="section card">
+    <h2>Стандартный вид ответа</h2>
+    <p>Чтобы ответ выглядел профессионально, он всегда должен быть в одном формате:</p>
+    <table>
+      <tr><th>Блок ответа</th><th>Пример</th></tr>
+      <tr><td>Короткий вывод</td><td>Сумма считается на форме документа, а не при печати.</td></tr>
+      <tr><td>Что найдено</td><td>Документ, файл, место внутри файла.</td></tr>
+      <tr><td>Простыми словами</td><td>Цена умножается на количество, строки складываются в итог.</td></tr>
+      <tr><td>Как проверить</td><td>Открыть файл, найти слова, изменить количество в демо.</td></tr>
+      <tr><td>Уверенность</td><td><span class="ok">Высокая</span>, если найдено точное место; <span class="warn">средняя</span>, если найден план проверки.</td></tr>
+      <tr><td>Что не найдено</td><td>Например: отдельного готового отчёта нет.</td></tr>
+    </table>
+  </div>
+
+  <div class="section grid2">
+    <div class="card">
+      <h2>Как провести 10-минутное демо</h2>
+      <div class="step"><div class="num">1</div><div><b>Начать с боли:</b> “в 1С сложно быстро понять, где что считается”.</div></div>
+      <div class="step"><div class="num">2</div><div><b>Показать вопрос:</b> “где считается сумма?”.</div></div>
+      <div class="step"><div class="num">3</div><div><b>Показать найденное место:</b> файл, действие, проверка.</div></div>
+      <div class="step"><div class="num">4</div><div><b>Показать безопасность:</b> копия, локально, базу не меняем.</div></div>
+      <div class="step"><div class="num">5</div><div><b>Перевести к клиенту:</b> “какие 3 вопроса у вас болят?”</div></div>
+    </div>
+    <div class="card">
+      <h2>Что спросить у владельца</h2>
+      <ul>
+        <li>Какие вопросы по 1С чаще всего требуют разработчика?</li>
+        <li>Есть ли зависимость от одного специалиста?</li>
+        <li>Бывает ли, что сумма, цена или скидка считаются непонятно?</li>
+        <li>Сколько времени обычно уходит на поиск причины?</li>
+        <li>Хотите проверить 3 вопроса на копии вашей 1С?</li>
+      </ul>
+      <div class="quote">“Давайте не будем внедрять вслепую. Возьмём 3 ваших вопроса и посмотрим, найдёт ли инструмент полезные места.”</div>
+    </div>
+  </div>
+
+  <div class="section grid">
+    <div class="card success">
+      <h2>Что можно обещать</h2>
+      <ul>
+        <li>быстрее найти место в 1С;</li>
+        <li>получить файл и фрагмент для проверки;</li>
+        <li>работать на копии, не на боевой базе;</li>
+        <li>проверить пользу на 3–5 вопросах.</li>
+      </ul>
+    </div>
+    <div class="card danger">
+      <h2>Что не обещать</h2>
+      <ul>
+        <li>AI сам всё исправит;</li>
+        <li>1С-специалист больше не нужен;</li>
+        <li>полная гарантия закона и безопасности;</li>
+        <li>можно менять рабочую базу автоматически.</li>
+      </ul>
+    </div>
+    <div class="card risk">
+      <h2>Безопасность</h2>
+      <ul>
+        <li>клиент делает копию у себя;</li>
+        <li>файлы не отправляются исполнителю;</li>
+        <li>внешний AI — только с ключом клиента;</li>
+        <li>ответ проверяет человек.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>Проверка, что всё работает</h2>
+    <p>Если нужно доказать, что это не нарисованная презентация:</p>
+    <pre>cd C:\1c-ai-workbench
+.\scripts\06_healthcheck.ps1
+opencode mcp list</pre>
+    <p>Ожидаем: реальные <span class="ok">[OK]</span> в проверке и <code>1c-code-index connected</code> в opencode. Если индекс удалён или повреждён, healthcheck должен показать ошибку.</p>
+    <p>Пример настоящего поиска:</p>
+    <pre>.\tools\code-index-mcp\target\release\bsl-indexer.exe grep-body --path "C:\1c-ai-workbench\generated\index\source-mirror" --pattern "Движения.Продажи" --language bsl --limit 20</pre>
+  </div>
+
+  <div class="section cta">
+    <h2>Следующий шаг: пилот с AI-навигатором по вашей 1С</h2>
+    <p class="lead">Предложение для первого клиента:</p>
+    <p>“Давайте на копии вашей 1С проверим 3 реальных вопроса. Если <strong>1C AI Dev Workbench</strong> найдёт понятные места и это сэкономит время — обсудим пилот.”</p>
+    <p class="small">Формат: 30 минут демо → 1–2 часа проверка на копии → решение по пилоту.</p>
+  </div>
+</div>
+</body>
+</html>

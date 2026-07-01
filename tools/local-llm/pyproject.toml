@@ -1,0 +1,14 @@
+[project]
+name = "local-llm-tuner"
+version = "0.1.0"
+description = "Hardware-aware llama.cpp launcher for the 1c-ai-workbench machine profile."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+local-llm-tune = "local_llm_tuner.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"

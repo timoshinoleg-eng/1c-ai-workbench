@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [main, production-v1-base, production-v1-review]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  python-lint:
+    name: Python lint & format (ruff, black, mypy)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black mypy
+      - name: Ruff
+        shell: pwsh
+        run: ruff check tools/ scripts/ --output-format=github
+      - name: Black check
+        shell: pwsh
+        run: black --check --diff tools/ scripts/
+      - name: Mypy
+        shell: pwsh
+        run: |
+          mypy --install-types --non-interactive tools/skills-bridge/ tools/prompt-gallery/ tools/help-index-mcp/ || true
+
+  rust-build:
+    name: Rust build & test (bsl-indexer)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/code-index-mcp
+      - name: cargo fmt
+        working-directory: tools/code-index-mcp
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        working-directory: tools/code-index-mcp
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: tools/code-index-mcp
+        run: cargo test --all --no-fail-fast
+      # Интеграционные тесты CLI (тяжёлые, marked #[ignore]):
+      # roundtrip index→query на фикстуре. Требует собранного release-бинаря,
+      # кэш rust-cache сохраняет target/ между шагами — cargo переиспользует артефакты.
+      - name: cargo integration test
+        if: success()
+        working-directory: tools/code-index-mcp
+        run: |
+          cargo build --release -p bsl-indexer
+          cargo test --workspace -- --ignored test_index_then_search_roundtrip
+          cargo test --workspace -- --ignored test_stats_with_fixture
+          cargo test --workspace -- --ignored test_query_with_fixture
+
+  powershell-smoke:
+    name: PowerShell smoke checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+          .\scripts\06_healthcheck.ps1
+      - name: Skills bridge check
+        shell: pwsh
+        if: always()
+        run: .\scripts\16_check_skills_bridge.ps1
+      - name: Prompt gallery check
+        shell: pwsh
+        if: always()
+        run: .\scripts\18_check_prompt_gallery.ps1
+
+  license-check:
+    name: License compliance (REUSE)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install reuse
+        run: sudo apt-get update && sudo apt-get install -y reuse
+      - name: Reuse lint
+        run: reuse lint
+
+  markdown-lint:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v18
+        with:
+          globs: |
+            **/*.md
+            !node_modules/**
+            !tools/cc-1c-skills/**
+
+  pre-commit:
+    name: Pre-commit (all hooks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Run pre-commit
+        run: pre-commit run --all-files --show-diff-on-failure
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ── Полный интеграционный прогон (workspace --all-features, release-бинарь) ──
+  # Отделён от rust-build, чтобы:
+  #   * не задерживать PR-проверки (rust-build быстрый, cargo-integration тяжёлый);
+  #   * иметь отдельный артефакт test-report для дебага.
+  # CARGO_TARGET_DIR явно не задан — cargo кладёт target в ./target/ относительно
+  # workspace root, что совпадает с rust-build (тот же rust-cache вейркспейс).
+  cargo-integration:
+    name: Cargo integration tests (full)
+    runs-on: windows-latest
+    needs: rust-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/code-index-mcp
+      - name: Build release (all features)
+        working-directory: tools/code-index-mcp
+        run: cargo build --release --workspace --all-features
+      - name: Unit tests
+        working-directory: tools/code-index-mcp
+        run: cargo test --workspace --all-features --no-fail-fast -- --format=json --report-time > cargo-test-unit.json 2> cargo-test-unit.stderr
+        continue-on-error: true
+      - name: Integration tests (heavy, --ignored)
+        working-directory: tools/code-index-mcp
+        run: cargo test --workspace --all-features --no-fail-fast -- --ignored --format=json --report-time > cargo-test-integration.json 2> cargo-test-integration.stderr
+        continue-on-error: true
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-test-report
+          path: |
+            tools/code-index-mcp/cargo-test-unit.json
+            tools/code-index-mcp/cargo-test-unit.stderr
+            tools/code-index-mcp/cargo-test-integration.json
+            tools/code-index-mcp/cargo-test-integration.stderr
+          if-no-files-found: warn

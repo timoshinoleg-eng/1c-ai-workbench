@@ -1,0 +1,19 @@
+{
+  "__copy_note": "If you installed outside C:\\1c-ai-workbench, replace every C:\\1c-ai-workbench path with your actual install path before copying this config.",
+  "servers": {
+    "1c-code-index": {
+      "type": "stdio",
+      "command": "C:\\1c-ai-workbench\\tools\\code-index-mcp\\target\\release\\bsl-indexer.exe",
+      "args": [
+        "serve",
+        "--path",
+        "onec=C:\\1c-ai-workbench\\generated\\index\\source-mirror",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "CODE_INDEX_HOME": "C:\\1c-ai-workbench\\generated\\code-index-home"
+      }
+    }
+  }
+}

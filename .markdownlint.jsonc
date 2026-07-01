@@ -1,0 +1,32 @@
+{
+  "config": {
+    "default": true
+  },
+  "MD013": false,
+  "MD024": {
+    "siblings_only": true
+  },
+  "MD033": false,
+  "MD034": false,
+  "MD036": false,
+  "MD041": false,
+  "MD046": false,
+  "MD059": false,
+  "line-length": false,
+  "no-inline-html": false,
+  "first-line-h1": false,
+  "no-bare-urls": false,
+  "no-emphasis-as-heading": false,
+  "no-empty-links": false,
+  "single-title": false,
+  "globs": [
+    "**/*.md",
+    "!node_modules/**",
+    "!**/target/**",
+    "!tools/cc-1c-skills/**",
+    "!generated/**",
+    "!logs/**",
+    "!dist/**",
+    "!docs/legal/scans/**"
+  ]
+}

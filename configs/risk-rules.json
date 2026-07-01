@@ -1,0 +1,89 @@
+{
+  "$schema": "configs/risk-rules-schema.json",
+  "version": "1.0.0",
+  "description": "Эвристики для Risk Scan. Каждое правило — детектор потенциальной проблемы в BSL.",
+  "rules": [
+    {
+      "id": "QUERY_IN_LOOP",
+      "severity": "high",
+      "name": "Запрос в цикле",
+      "description": "Текст запроса формируется внутри цикла Пока/Для каждого",
+      "pattern": "query_in_loop",
+      "recommendation": "Вынести запрос из цикла, использовать временные таблицы или соединение"
+    },
+    {
+      "id": "LONG_PROC",
+      "severity": "medium",
+      "name": "Процедура > 100 строк",
+      "description": "Процедуры длиннее 100 строк — признак нарушения SRP",
+      "threshold": 100,
+      "pattern": "long_procedure",
+      "recommendation": "Разбить на несколько специализированных процедур"
+    },
+    {
+      "id": "DEEP_NESTING",
+      "severity": "medium",
+      "name": "Глубокая вложенность (>4 уровня)",
+      "description": "Вложенные условия или циклы глубже 4 уровней — трудночитаемо",
+      "threshold": 4,
+      "pattern": "deep_nesting",
+      "recommendation": "Выделить вложенные блоки в отдельные процедуры или использовать ранний выход"
+    },
+    {
+      "id": "NO_LOG",
+      "severity": "medium",
+      "name": "Исключение без логирования",
+      "description": "Блок Попытка-Исключение без записи в журнал регистрации",
+      "pattern": "no_log",
+      "recommendation": "Добавить ЗаписьЖурналаРегистрации в блок Исключение"
+    },
+    {
+      "id": "BULK_MOVEMENT",
+      "severity": "high",
+      "name": "Массовые движения без проверки",
+      "description": "Движения.Добавить или НаборЗаписей.Записать без предварительной проверки",
+      "pattern": "bulk_movement",
+      "recommendation": "Добавить проверку перед массовой записью движений"
+    },
+    {
+      "id": "HARDCODED_ID",
+      "severity": "medium",
+      "name": "Жёстко зашитый GUID/UUID",
+      "description": "Константный GUID в коде — ломкая связь с конкретным объектом",
+      "pattern": "hardcoded_guid",
+      "recommendation": "Вынести в константу или получать через Метаданные"
+    },
+    {
+      "id": "SELECT_ALL",
+      "severity": "low",
+      "name": "ВЫБРАТЬ * в запросе",
+      "description": "SELECT * без явного перечисления полей",
+      "pattern": "select_all",
+      "recommendation": "Перечислить только нужные поля для ясности и устойчивости к изменениям схемы"
+    },
+    {
+      "id": "DYN_QUERY",
+      "severity": "medium",
+      "name": "Динамический запрос через конкатенацию",
+      "description": "Строка запроса собирается через символы + или ++",
+      "pattern": "dynamic_query",
+      "recommendation": "Использовать параметры запроса вместо конкатенации строк"
+    },
+    {
+      "id": "GLOBAL_VAR",
+      "severity": "medium",
+      "name": "Глобальная переменная модуля",
+      "description": "Переменная на уровне модуля — риск состояния между вызовами",
+      "pattern": "global_var",
+      "recommendation": "Передать параметром или использовать хранилище значений"
+    },
+    {
+      "id": "FORMULA_IN_FORM",
+      "severity": "medium",
+      "name": "Расчёт на форме (должен быть в объекте)",
+      "description": "Бизнес-логика расчётов в процедурах формы вместо модуля объекта",
+      "pattern": "formula_in_form",
+      "recommendation": "Вынести бизнес-логику в модуль объекта"
+    }
+  ]
+}

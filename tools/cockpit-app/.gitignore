@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+src-tauri/target
+src-tauri/Cargo.lock
+src-tauri/gen
+*.local
+
+# Testing
+coverage
+playwright-report
+test-results
+.playwright
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Tauri
+.tauri
+
+# Staged embedded resources
+embedded-resources/
+
+# IDE
+*.swp
+*.swo

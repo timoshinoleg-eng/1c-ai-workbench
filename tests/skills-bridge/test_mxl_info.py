@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.asyncio
+
+from conftest import call_tool_json
+
+
+TEMPLATE_PATH = "Reports/Sales/Templates/Main/Ext/Template.xml"
+
+
+async def test_mxl_info_success(skills_client, source_mirror, stub_skill_subprocess):
+    payload = await call_tool_json(skills_client, "mxl_info", {"source_path": str(source_mirror), "template_path": TEMPLATE_PATH})
+    assert payload["ok"] is True
+    assert payload["returncode"] == 0
+
+
+async def test_mxl_info_not_found(skills_client, source_mirror):
+    payload = await call_tool_json(skills_client, "mxl_info", {"source_path": str(source_mirror), "template_path": "missing"})
+    assert payload["ok"] is False
+    assert "target not found" in payload["error"]
+
+
+async def test_mxl_info_invalid_input(skills_client, source_mirror):
+    payload = await call_tool_json(skills_client, "mxl_info", {"source_path": str(source_mirror), "template_path": TEMPLATE_PATH, "format": "xml"})
+    assert payload["ok"] is False
+    assert "String should match pattern" in str(payload["error"])
+

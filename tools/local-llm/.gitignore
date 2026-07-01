@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 1c-ai-workbench contributors
+# SPDX-License-Identifier: MIT
+
+.venv/
+__pycache__/
+*.pyc

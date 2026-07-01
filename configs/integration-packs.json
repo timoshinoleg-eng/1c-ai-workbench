@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "0.1.0",
+  "packs": [
+    {
+      "id": "bsl-quality",
+      "name": "BSL Quality",
+      "what_it_does": "Groups analyzers and quality gates for BSL codebases.",
+      "first_smoke_check": "Confirm the analyzer or plugin binary starts and can see a BSL project.",
+      "next_scenario": "Run diagnostics first, then connect findings to Explain Module or a review workflow."
+    },
+    {
+      "id": "testing",
+      "name": "Testing",
+      "what_it_does": "Collects scripting and test execution tools used around 1C projects.",
+      "first_smoke_check": "Verify the runtime or runner answers with a version/help command before wiring test flows.",
+      "next_scenario": "Move from basic runtime validation into scripted checks, BDD, or xUnit-style regression runs."
+    },
+    {
+      "id": "review",
+      "name": "Review",
+      "what_it_does": "Tracks review-oriented tooling for AI-assisted code inspection and merge feedback.",
+      "first_smoke_check": "Verify the CLI or action entrypoint responds before connecting it to CI.",
+      "next_scenario": "Run a review pass on a small change set and compare it with the workbench's own prompts and rules."
+    },
+    {
+      "id": "prompt-gallery",
+      "name": "Prompt Gallery",
+      "what_it_does": "Exposes workbench prompt contracts as callable MCP tools instead of manual markdown snippets.",
+      "first_smoke_check": "Verify the prompt-gallery MCP server registers generic tools and one tool per prompt file.",
+      "next_scenario": "Call a prompt tool such as prompt_explain_module with task/context and then use code-index evidence to answer."
+    },
+    {
+      "id": "1c-skills",
+      "name": "1C Skills",
+      "what_it_does": "Exposes read-only 1C metadata, form, role, SKD, MXL, and validation tools as MCP calls over the local source mirror.",
+      "first_smoke_check": "Run the skills bridge check and confirm all read-only tools register.",
+      "next_scenario": "Run meta_info on an object, then inspect its form, roles, or SKD artifacts without leaving the local source mirror."
+    },
+    {
+      "id": "live-config-ops",
+      "name": "Live Configuration Ops",
+      "what_it_does": "Starts Phase B import/export operations around live 1C infobases without making live mode part of the default read-only stack.",
+      "first_smoke_check": "Verify the MCP bridge loads and ibcmd is either found or reported as optional missing.",
+      "next_scenario": "Dry-run ibcmd export for a pilot infobase, then export XML into generated/ibcmd-export and feed it into indexing."
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code Cockpit",
+      "what_it_does": "Captures editor-side operator experiences worth mirroring in the workbench.",
+      "first_smoke_check": "Confirm the extension or command surface loads in VS Code/Cursor.",
+      "next_scenario": "Use the UI shape as a reference for guided actions, test trees, and metadata navigation."
+    },
+    {
+      "id": "reference",
+      "name": "Reference",
+      "what_it_does": "Holds market and UX references that inform positioning but are not operational dependencies.",
+      "first_smoke_check": "Verify the reference is reachable and the product claims are attributable.",
+      "next_scenario": "Use it to sharpen product messaging, pack boundaries, and future workflow decisions."
+    }
+  ],
+  "tools": [
+    {
+      "id": "bsl-language-server",
+      "name": "BSL Language Server",
+      "pack": "bsl-quality",
+      "status": "experimental",
+      "why": "Core static analysis layer for BSL and OneScript. It is highly relevant to explain, fix, and quality flows, but remains experimental in this workbench until a local check script exists.",
+      "smoke_check": {
+        "type": "command",
+        "command": "java -jar bsl-language-server.jar --help",
+        "expected": "Help or command list appears without a JVM/runtime error."
+      },
+      "next_scenario": "Add a workbench check command, then connect diagnostics output to Explain Module and curated prompt flows.",
+      "sources": [
+        "https://github.com/1c-syntax/bsl-language-server",
+        "https://1c-syntax.github.io/bsl-language-server/en/"
+      ]
+    },
+    {
+      "id": "sonarqube-bsl-community-plugin",
+      "name": "SonarQube BSL Community Plugin",
+      "pack": "bsl-quality",
+      "status": "experimental",
+      "why": "Useful for team-level quality gates around BSL code, but it depends on SonarQube setup and broader environment choices. Enterprise Sonar usage is optional, not assumed.",
+      "smoke_check": {
+        "type": "command",
+        "command": "sonar-scanner -h",
+        "expected": "Scanner help opens, confirming the analysis entrypoint is available before any BSL project wiring."
+      },
+      "next_scenario": "Document a minimal sample project and quality gate path before elevating beyond experimental.",
+      "sources": [
+        "https://github.com/1c-syntax/sonar-bsl-plugin-community",
+        "https://1c-syntax.github.io/sonar-bsl-plugin-community/en/"
+      ]
+    },
+    {
+      "id": "onescript",
+      "name": "OneScript",
+      "pack": "testing",
+      "status": "experimental",
+      "why": "Important automation runtime for many 1C workflows, but Windows setup and downstream package expectations still need a tighter workbench recipe.",
+      "smoke_check": {
+        "type": "command",
+        "command": "oscript -version",
+        "expected": "The runtime prints its version and exits cleanly."
+      },
+      "next_scenario": "Use it as the runtime base for scripted checks and for tools such as vanessa-runner.",
+      "sources": [
+        "https://github.com/EvilBeaver/OneScript",
+        "https://oscript.io/"
+      ]
+    },
+    {
+      "id": "vanessa-runner",
+      "name": "vanessa-runner",
+      "pack": "testing",
+      "status": "experimental",
+      "why": "Strong candidate for orchestrating test and build operations around 1C, but versioning is a real issue: 2.x LTS remains safer while 3.x introduces breaking changes.",
+      "smoke_check": {
+        "type": "command",
+        "command": "vrunner help",
+        "expected": "The runner prints available commands without requiring a project execution context."
+      },
+      "next_scenario": "Add a documented profile for 2.x LTS first, then evaluate when a 3.x path is stable enough for the workbench.",
+      "sources": [
+        "https://github.com/vanessa-opensource/vanessa-runner",
+        "https://autumn-library.github.io/vanessa-runner/"
+      ]
+    },
+    {
+      "id": "vanessa-automation",
+      "name": "Vanessa Automation",
+      "pack": "testing",
+      "status": "reference-only",
+      "why": "High-value BDD testing tool for 1C, but Phase A does not yet define a repeatable Windows smoke path inside the workbench without wider 1C test-base setup assumptions.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Open the official docs and release channel to confirm the current package line before any local rollout.",
+        "expected": "Operator can identify the current distribution and prerequisites before deeper test-environment work."
+      },
+      "next_scenario": "Phase B can define a test-base recipe and then promote it to experimental with a real smoke command.",
+      "sources": [
+        "https://github.com/Pr-Mex/vanessa-automation",
+        "https://pr-mex.github.io/vanessa-automation/dev/"
+      ]
+    },
+    {
+      "id": "yaxunit",
+      "name": "YAxUnit",
+      "pack": "testing",
+      "status": "reference-only",
+      "why": "Relevant for modern 1C testing, but the workbench does not yet expose a standardized launch path or example project that would make the first check operational instead of aspirational.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Review the official repository and releases page to pin the intended distribution before adding a local test recipe.",
+        "expected": "Operator can identify the supported package and release source for a future scripted check."
+      },
+      "next_scenario": "Phase B can add a minimal fixture project and a documented launch path, then reclassify if the smoke flow becomes repeatable.",
+      "sources": [
+        "https://github.com/bia-technologies/yaxunit",
+        "https://bia-technologies.github.io/yaxunit/"
+      ]
+    },
+    {
+      "id": "ai-review",
+      "name": "ai-review",
+      "pack": "review",
+      "status": "experimental",
+      "why": "Useful reference for CI-driven AI review workflows, but it is not 1C-specific and still needs curation before it fits the workbench's operator model.",
+      "smoke_check": {
+        "type": "command",
+        "command": "ai-review --help",
+        "expected": "CLI help or entrypoint instructions appear, confirming the review surface exists."
+      },
+      "next_scenario": "Compare its CI review model with the workbench's Prompt Gallery and path-scoped AI rules before integrating any review recipe.",
+      "sources": [
+        "https://github.com/Nikita-Filonov/ai-review"
+      ]
+    },
+    {
+      "id": "prompt-gallery-mcp",
+      "name": "Prompt Gallery MCP",
+      "pack": "prompt-gallery",
+      "status": "experimental",
+      "why": "The local prompt gallery was not callable through MCP. This server registers generic prompt discovery tools and one callable tool per markdown prompt.",
+      "smoke_check": {
+        "type": "command",
+        "command": ".\\scripts\\18_check_prompt_gallery.ps1",
+        "expected": "Prompt gallery loads, prompt count matches prompts/*.md, and prompt_explain_module renders caller context."
+      },
+      "next_scenario": "Call prompt_gallery_list, then call a specific prompt tool with task and context from code-index-mcp.",
+      "sources": [
+        "prompts/*.md"
+      ]
+    },
+    {
+      "id": "ibcmd-bridge",
+      "name": "ibcmd Bridge",
+      "pack": "live-config-ops",
+      "status": "experimental",
+      "why": "Most direct Phase B path for vendor-supported configuration export/import, XML export comparison, indexing refresh, and EDT handoff. It is optional, disabled by default, and write operations are gated.",
+      "smoke_check": {
+        "type": "command",
+        "command": ".\\scripts\\17_check_ibcmd_bridge.ps1",
+        "expected": "Bridge imports, registers 6 MCP tools, dry-runs export/index, compares a fixture directory, and reports ibcmd presence or optional missing status."
+      },
+      "next_scenario": "Run ibcmd_export_and_index with dry_run=true for a pilot infobase, then export to generated/ibcmd-export, index the result, and compare it with the previous export.",
+      "sources": [
+        "https://kb.1ci.com/1C_Enterprise_Platform/Guides/Administrator_Guides/1C_Enterprise_8.3.22_Administrator_Guide/Chapter_7._Standalone_server/7.4._Examples_of_managing_and_starting_the_standalone_server/7.4.13._Export_and_import_of_configuration_to_files/",
+        "https://1c-dn.com/library/1c_enterprise_development_tools_importing_configurations/"
+      ]
+    },
+    {
+      "id": "skills-bridge",
+      "name": "Skills Bridge (cc-1c-skills)",
+      "pack": "1c-skills",
+      "status": "experimental",
+      "why": "MCP-обёртка для 70+ Claude Code skills от Nikolay-Shirokov. Добавляет read-only интроспекцию метаданных 1С (объекты, формы, СКД, роли, подсистемы, конфигурации) и валидацию XML-структур.",
+      "smoke_check": {
+        "type": "command",
+        "command": "python %WORKBENCH_ROOT%\\tools\\skills-bridge\\server.py --help",
+        "expected": "FastMCP help or server start message."
+      },
+      "next_scenario": "Run meta_info on a catalog object, then form_info on its form, then skd_info on a report template.",
+      "sources": [
+        "https://github.com/Nikolay-Shirokov/cc-1c-skills",
+        "https://github.com/Nikolay-Shirokov/cc-1c-skills/blob/main/LICENSE"
+      ]
+    },
+    {
+      "id": "1c-platform-tools",
+      "name": "1C: Platform Tools",
+      "pack": "vscode",
+      "status": "reference-only",
+      "why": "Strong cockpit and workflow reference for VS Code/Cursor, especially around command surfaces, navigation, test trees, and AI adjacency. Phase A treats it as a UX reference, not a dependency promise.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Install the extension in VS Code/Cursor and confirm the command palette shows 1C: Platform Tools commands.",
+        "expected": "The extension loads and exposes its command surface."
+      },
+      "next_scenario": "Borrow cockpit patterns for future workbench actions without coupling the workbench to the extension lifecycle.",
+      "sources": [
+        "https://marketplace.visualstudio.com/items?itemName=yellow-hammer.1c-platform-tools",
+        "https://github.com/yellow-hammer/vscode-1c-platform-tools"
+      ]
+    },
+    {
+      "id": "confaster",
+      "name": "Confaster",
+      "pack": "reference",
+      "status": "reference-only",
+      "why": "Relevant market reference: an AI agent inside 1C Configurator with an MCP claim. It remains reference-only because the distribution is closed-source and no public repository is available for trust and integration review.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Open the product site and verify the current feature claims, packaging, and download path.",
+        "expected": "Operator can confirm that the reference still exists and what it claims to offer."
+      },
+      "next_scenario": "Use it for competitive positioning and UX language, not as a dependency or code source.",
+      "sources": [
+        "https://confaster.ru/"
+      ]
+    }
+  ]
+}

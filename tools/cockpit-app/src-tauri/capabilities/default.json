@@ -1,0 +1,42 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for the 1C AI Cockpit main window. Grants the minimum set of permissions the UI needs to talk to the Rust core and the filesystem / dialog / shell plugins.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-set-title",
+    "core:webview:default",
+    "core:event:default",
+    "core:path:default",
+    "core:app:default",
+
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    "fs:allow-exists",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$APPDATA/**" },
+        { "path": "$APPCONFIG/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "C:/1c-ai-workbench/**" },
+        { "path": "C:/1c-ai-client/**" }
+      ]
+    },
+
+    "dialog:default",
+    "dialog:allow-open",
+
+    "shell:default",
+    "shell:allow-open"
+  ]
+}

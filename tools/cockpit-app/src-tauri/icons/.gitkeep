@@ -1,0 +1,3 @@
+// Tauri 2.x generates these from a single source image via `tauri icon`.
+// Intentionally a comment so the directory is non-empty for git but
+// no broken binaries are committed.

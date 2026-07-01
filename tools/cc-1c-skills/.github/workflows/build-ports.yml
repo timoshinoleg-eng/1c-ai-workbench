@@ -1,0 +1,234 @@
+name: Build port branches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/skills/**'
+      - 'scripts/switch.py'
+      - '.github/templates/README.port.md.tmpl'
+      - '.github/templates/codex-plugin.json.tmpl'
+      - '.github/templates/claude-plugin.json.tmpl'
+      - '.github/workflows/build-ports.yml'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: claude-code
+            runtime: python
+            branch: port-claude-code-py
+            label: Claude Code
+            target_dir: .claude/skills
+          - platform: cursor
+            runtime: powershell
+            branch: port-cursor
+            label: Cursor
+            target_dir: .cursor/skills
+          - platform: cursor
+            runtime: python
+            branch: port-cursor-py
+            label: Cursor
+            target_dir: .cursor/skills
+          - platform: codex
+            runtime: powershell
+            branch: port-codex
+            label: Codex
+            target_dir: .codex/skills
+          - platform: codex
+            runtime: python
+            branch: port-codex-py
+            label: Codex
+            target_dir: .codex/skills
+          - platform: copilot
+            runtime: powershell
+            branch: port-copilot
+            label: GitHub Copilot
+            target_dir: .github/skills
+          - platform: copilot
+            runtime: python
+            branch: port-copilot-py
+            label: GitHub Copilot
+            target_dir: .github/skills
+          - platform: augment
+            runtime: powershell
+            branch: port-augment
+            label: Augment
+            target_dir: .augment/skills
+          - platform: augment
+            runtime: python
+            branch: port-augment-py
+            label: Augment
+            target_dir: .augment/skills
+          - platform: cline
+            runtime: powershell
+            branch: port-cline
+            label: Cline
+            target_dir: .cline/skills
+          - platform: cline
+            runtime: python
+            branch: port-cline-py
+            label: Cline
+            target_dir: .cline/skills
+          - platform: kilo
+            runtime: powershell
+            branch: port-kilo
+            label: Kilo Code
+            target_dir: .kilocode/skills
+          - platform: kilo
+            runtime: python
+            branch: port-kilo-py
+            label: Kilo Code
+            target_dir: .kilocode/skills
+          - platform: kiro
+            runtime: powershell
+            branch: port-kiro
+            label: Kiro
+            target_dir: .kiro/skills
+          - platform: kiro
+            runtime: python
+            branch: port-kiro-py
+            label: Kiro
+            target_dir: .kiro/skills
+          - platform: gemini
+            runtime: powershell
+            branch: port-gemini
+            label: Gemini CLI
+            target_dir: .gemini/skills
+          - platform: gemini
+            runtime: python
+            branch: port-gemini-py
+            label: Gemini CLI
+            target_dir: .gemini/skills
+          - platform: opencode
+            runtime: powershell
+            branch: port-opencode
+            label: OpenCode
+            target_dir: .opencode/skills
+          - platform: opencode
+            runtime: python
+            branch: port-opencode-py
+            label: OpenCode
+            target_dir: .opencode/skills
+          - platform: roo
+            runtime: powershell
+            branch: port-roo
+            label: Roo Code
+            target_dir: .roo/skills
+          - platform: roo
+            runtime: python
+            branch: port-roo-py
+            label: Roo Code
+            target_dir: .roo/skills
+          - platform: windsurf
+            runtime: powershell
+            branch: port-windsurf
+            label: Windsurf
+            target_dir: .windsurf/skills
+          - platform: windsurf
+            runtime: python
+            branch: port-windsurf-py
+            label: Windsurf
+            target_dir: .windsurf/skills
+          - platform: codeassistant
+            runtime: powershell
+            branch: port-codeassistant
+            label: Yandex Code Assistant
+            target_dir: .codeassistant/skills
+          - platform: codeassistant
+            runtime: python
+            branch: port-codeassistant-py
+            label: Yandex Code Assistant
+            target_dir: .codeassistant/skills
+          - platform: agents
+            runtime: powershell
+            branch: port-agents
+            label: Agent Skills
+            target_dir: .agents/skills
+          - platform: agents
+            runtime: python
+            branch: port-agents-py
+            label: Agent Skills
+            target_dir: .agents/skills
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Build skills tree for ${{ matrix.platform }} (${{ matrix.runtime }})
+        run: |
+          python scripts/switch.py "${{ matrix.platform }}" \
+            --project-dir build \
+            --runtime "${{ matrix.runtime }}"
+
+      - name: Render port README
+        env:
+          PLATFORM_LABEL: ${{ matrix.label }}
+          PLATFORM_DIR: ${{ matrix.target_dir }}
+          RUNTIME_LABEL: ${{ matrix.runtime == 'powershell' && 'PowerShell' || 'Python' }}
+          COMMIT_SHA: ${{ github.sha }}
+          MAIN_REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          sed \
+            -e "s|{{PLATFORM_LABEL}}|${PLATFORM_LABEL}|g" \
+            -e "s|{{PLATFORM_DIR}}|${PLATFORM_DIR}|g" \
+            -e "s|{{RUNTIME_LABEL}}|${RUNTIME_LABEL}|g" \
+            -e "s|{{COMMIT_SHA}}|${COMMIT_SHA}|g" \
+            -e "s|{{MAIN_REPO_URL}}|${MAIN_REPO_URL}|g" \
+            .github/templates/README.port.md.tmpl > build/README.md
+
+      - name: Render Codex plugin manifest
+        if: matrix.platform == 'codex'
+        env:
+          PLUGIN_NAME: ${{ matrix.runtime == 'python' && '1c-skills-py' || '1c-skills' }}
+          RUNTIME_LABEL: ${{ matrix.runtime == 'powershell' && 'PowerShell' || 'Python' }}
+          SHORT_DESCRIPTION: ${{ matrix.runtime == 'python' && 'Python runtime (Linux/Mac/Windows)' || 'PowerShell runtime (Windows-first)' }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          VERSION="$(date -u +%Y.%-m.%-d)+${COMMIT_SHA::7}"
+          mkdir -p build/.codex-plugin
+          sed \
+            -e "s|{{PLUGIN_NAME}}|${PLUGIN_NAME}|g" \
+            -e "s|{{VERSION}}|${VERSION}|g" \
+            -e "s|{{RUNTIME_LABEL}}|${RUNTIME_LABEL}|g" \
+            -e "s|{{SHORT_DESCRIPTION}}|${SHORT_DESCRIPTION}|g" \
+            .github/templates/codex-plugin.json.tmpl > build/.codex-plugin/plugin.json
+
+      - name: Render Claude plugin manifest (Py variant)
+        if: matrix.platform == 'claude-code' && matrix.runtime == 'python'
+        env:
+          PLUGIN_NAME: 1c-skills-py
+        run: |
+          mkdir -p build/.claude-plugin
+          sed -e "s|{{PLUGIN_NAME}}|${PLUGIN_NAME}|g" \
+            .github/templates/claude-plugin.json.tmpl > build/.claude-plugin/plugin.json
+
+      - name: Copy LICENSE
+        run: cp LICENSE build/LICENSE
+
+      - name: Force-push orphan snapshot to ${{ matrix.branch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd build
+          git init -q -b master
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Auto-build: ${{ matrix.platform }} (${{ matrix.runtime }}) from ${GITHUB_SHA::7}"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" \
+            "master:${{ matrix.branch }}"

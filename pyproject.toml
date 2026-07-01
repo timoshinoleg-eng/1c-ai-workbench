@@ -1,0 +1,121 @@
+# Pyproject for 1c-ai-workbench
+# Aggregates tool configurations for ruff, black, mypy, and pytest.
+
+[tool.ruff]
+line-length = 125
+target-version = "py310"
+extend-exclude = [
+    "tools/cc-1c-skills",
+    "tools/code-index-mcp/target",
+    "tools/live-1c-bridge",
+    "generated",
+    "logs",
+    "dist",
+    ".venv",
+    "venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, pycodestyle warnings
+# F: pyflakes
+# I: isort
+# B: flake8-bugbear
+# C4: flake8-comprehensions
+# UP: pyupgrade
+# N: pep8-naming
+# SIM: flake8-simplify
+# RUF: ruff-specific rules
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",  # pep8-naming
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",  # line too long — code inherited from cc-1c-skills uses 100-125; we cap at 125 but allow overflow
+    "B008",  # do not perform function calls in argument defaults
+    "B904",  # raise from (overly strict for legacy code)
+    "RUF001",  # ambiguous unicode characters (Cyrillic in 1C:Enterprise code)
+    "RUF002",  # class-without-metaclass — legacy pattern from cc-1c-skills
+    "RUF012",  # mutable class attributes (Fluent API)
+    "SIM108",  # ternary if-else — readability preference for explicit blocks
+    "UP031",  # use format specifiers instead of percent format (legacy style)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]  # import after sys.path modification
+"tools/skills-bridge/tools/*" = ["N", "E", "W"]  # adapted from cc-1c-skills
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+
+[tool.black]
+line-length = 125
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+  | tools/cc-1c-skills
+  | tools/live-1c-bridge
+  | generated
+  | logs
+  | dist
+  | \.venv
+  | venv
+  | __pycache__
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+ignore_missing_imports = true
+exclude = [
+    "tools/cc-1c-skills",
+    "tools/live-1c-bridge",
+    "generated",
+    "logs",
+    "dist",
+    "tests/fixtures",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests", "tools"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+# E2E/smoke scripts under vendored trees use `TestCase` as a plain dataclass
+# name; pytest's default `python_classes = ["Test*"]` would otherwise try to
+# collect them. Excluded via `collect_ignore_glob` in the top-level
+# conftest.py (pytest 9.x removed this option from pyproject).
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:mcp",
+    "ignore::DeprecationWarning:fastmcp",
+]

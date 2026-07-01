@@ -1,0 +1,9 @@
+# Vendored Rust workspace under tools/code-index-mcp
+
+# Exclude target/ from language stats and diffs
+tools/code-index-mcp/target/** linguist-generated=true diff=bin
+
+# Cargo.lock is a derived file (but pinned for reproducible builds)
+tools/code-index-mcp/Cargo.lock linguist-generated=true
+
+# Vendored skill trees have their own .gitattributes; keep our overrides last

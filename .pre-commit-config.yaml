@@ -1,0 +1,124 @@
+# Pre-commit hooks for 1c-ai-workbench
+# Install: pip install pre-commit && pre-commit install
+# Run on all files: pre-commit run --all-files
+# Update hook versions: pre-commit autoupdate
+
+# Exclude generated artifacts and vendored dependencies
+exclude: |
+  (?x)^(
+    tests/.*|
+    tools/cockpit-app/.*|
+    generated/.*|
+    logs/.*|
+    dist/.*|
+    .*/target/.*|
+    .*/__pycache__/.*|
+    .*\.min\.(js|css)|
+    tools/cc-1c-skills/.*
+  )$
+
+repos:
+  # ---- Secret scanning (highest priority, blocking) ----
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
+        description: Scans for API keys, tokens, passwords leaked in code
+
+  # ---- Standard hygiene (blocking) ----
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^tools/cc-1c-skills/
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ---- Python (advisory in v1.0; ruff catches real issues, manual stage
+  #                  for stricter rules; E501 and inherited-code rules ignored) ----
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.5
+    hooks:
+      - id: ruff
+        args: ["--fix", "--config", "pyproject.toml"]
+        stages: [manual]
+      - id: ruff-format
+        args: ["--config", "pyproject.toml"]
+        stages: [manual]
+
+  # ---- Rust (blocking — already in CI) ----
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --manifest-path tools/code-index-mcp/Cargo.toml --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-fmt-check
+        name: cargo fmt --check
+        entry: cargo fmt --manifest-path tools/code-index-mcp/Cargo.toml -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+  # ---- Markdown (advisory in v1.1; .markdownlint.jsonc permissive) ----
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.13.0
+    hooks:
+      - id: markdownlint-cli2
+        args: ["--config", ".markdownlint.jsonc"]
+        stages: [manual]
+
+  # ---- PowerShell (errors only) ----
+  - repo: local
+    hooks:
+      - id: powershell-scriptanalyzer
+        name: PSScriptAnalyzer (errors only)
+        entry: pwsh -NoProfile -Command $errors = Invoke-ScriptAnalyzer -Settings .PSScriptAnalyzerSettings.psd1 -Path scripts/ -Recurse -EnableExit:$false | Where-Object Severity -eq 'Error'; if ($errors) { $errors | ForEach-Object { Write-Host "$($_.ScriptName):$($_.Line) [$($_.Severity)] $($_.Message)" }; exit 1 } else { exit 0 }
+        language: system
+        types: [powershell]
+        pass_filenames: false
+
+  # ---- Shell ----
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ["--severity=warning"]
+
+  # ---- Spelling (advisory in v1.1; codespell exclude needs work for v1.1.1) ----
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args: [
+          "--ignore-words-list=BSL,bsl,onedrive,1c,thats,recieve,seperate,ot",
+          "--skip=**/cc-1c-skills/**,**/code-index-mcp/**,**/target/**,**/*.json,**/logs/**,**/*.log,**/*.log.err,**/dist/**"
+        ]
+        exclude: ^tools/(cc-1c-skills|code-index-mcp|live-1c-bridge)/
+        stages: [manual]
+
+  # ---- License compliance (blocking) ----
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v4.0.3
+    hooks:
+      - id: reuse
+        args: ["lint"]
+
+  # ---- EditorConfig (advisory in v1.1; .editorconfig needs PS-file indent fix for v1.1.1) ----
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.0.3
+    hooks:
+      - id: editorconfig-checker
+        alias: ec
+        exclude: ^tools/cc-1c-skills/
+        stages: [manual]

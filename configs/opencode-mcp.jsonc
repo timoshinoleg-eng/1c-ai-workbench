@@ -1,0 +1,23 @@
+{
+  // Verified against opencode docs: local MCP servers use command as an array.
+  // Copy the `mcp` object into an opencode config, or use the project-level
+  // `C:\1c-ai-workbench\opencode.jsonc` shipped with this workbench.
+  // If you installed outside C:\1c-ai-workbench, replace every path below with your actual install path before copying this config.
+  "mcp": {
+    "1c-code-index": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "C:\\1c-ai-workbench\\tools\\code-index-mcp\\target\\release\\bsl-indexer.exe",
+        "serve",
+        "--path",
+        "onec=C:\\1c-ai-workbench\\generated\\index\\source-mirror",
+        "--transport",
+        "stdio"
+      ],
+      "environment": {
+        "CODE_INDEX_HOME": "C:\\1c-ai-workbench\\generated\\code-index-home"
+      }
+    }
+  }
+}

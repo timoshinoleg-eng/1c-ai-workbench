@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 1c-ai-workbench contributors
+# SPDX-License-Identifier: MIT
+
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "local-llm-tuner"
+version = "0.1.0"
+source = { editable = "." }

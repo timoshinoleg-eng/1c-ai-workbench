@@ -1,0 +1,124 @@
+version = 1
+
+# Default annotation: applies to everything not matched by the
+# more specific annotations below.
+[[annotations]]
+path = [
+    "**/*.py",
+    "**/*.ps1",
+    "**/*.psm1",
+    "**/*.psd1",
+    "**/*.toml",
+    "**/*.json",
+    "**/*.jsonc",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.md",
+    "**/*.rs",
+    "**/*.tsx",
+    "**/*.ts",
+    "**/*.tss",
+    "**/*.jsx",
+    "**/*.js",
+    "**/*.css",
+    "**/*.html",
+    "**/*.sh",
+    "**/*.cs",
+    "**/*.csproj",
+    "**/*.svg",
+    "**/*.iss",
+    "**/*.txt",
+    "**/*.example",
+    "**/*.env",
+    "**/*.cjs",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    ".editorconfig",
+    ".gitignore",
+    ".markdownlint.jsonc",
+    ".prettierrc",
+    ".eslintrc.cjs",
+    ".pre-commit-config.yaml",
+    "NOTICE",
+    "AUTHORS.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "REUSE.toml",
+    "installer/**",
+    "configs/**",
+    "docs/**",
+            "docs/legal/**",
+                "tools/help-index-mcp/requirements.txt",
+    "tools/ibcmd-bridge/requirements.txt",
+    "tools/prompt-gallery/requirements.txt",
+    "tools/skills-bridge/requirements.txt",
+    "tools/live-1c-bridge/**",
+    "tools/code-index-mcp/**",
+    "tools/code-index-mcp/tests/**",
+    "tools/code-index-mcp/crates/**",
+    "tools/cockpit-app/**",
+    "prompts/**",
+    "rules/**",
+    "rules/*.md",
+    ".reuse/**",
+    "scripts/**",
+    "tests/**",
+    "tests/skills-bridge/**",
+    "tests/prompt-gallery/**",
+]
+SPDX-FileCopyrightText = "2026 1c-ai-workbench contributors"
+SPDX-License-Identifier = "MIT"
+
+# Adapted from cc-1c-skills (MIT) by Nikolay Shirokov.
+# See docs/legal/BORROWING_MAP.md for full attribution.
+[[annotations]]
+path = [
+    "tools/skills-bridge/tools/audit_metadata.py",
+    "tools/skills-bridge/tools/cf_info.py",
+    "tools/skills-bridge/tools/cfe_diff.py",
+    "tools/skills-bridge/tools/common.py",
+    "tools/skills-bridge/tools/compare_versions.py",
+    "tools/skills-bridge/tools/explain_module.py",
+    "tools/skills-bridge/tools/find_object.py",
+    "tools/skills-bridge/tools/find_similar.py",
+    "tools/skills-bridge/tools/form_info.py",
+    "tools/skills-bridge/tools/form_validate.py",
+    "tools/skills-bridge/tools/meta_info.py",
+    "tools/skills-bridge/tools/meta_validate.py",
+    "tools/skills-bridge/tools/mxl_info.py",
+    "tools/skills-bridge/tools/query_optimizer.py",
+    "tools/skills-bridge/tools/role_info.py",
+    "tools/skills-bridge/tools/skd_info.py",
+    "tools/skills-bridge/tools/subsystem_info.py",
+    "tools/skills-bridge/tools/__init__.py",
+]
+SPDX-FileCopyrightText = "2026 1c-ai-workbench contributors; 2025-2026 Nikolay Shirokov (original cc-1c-skills, MIT)"
+SPDX-License-Identifier = "MIT"
+
+# BSL Language Server (1c-syntax, MIT) — methodology reference.
+# Nothing in this repo is copied BSL LS code, but tools/code-index-mcp/scripts
+# integrates with BSL LS via stdio.
+[[annotations]]
+path = [
+    "tools/code-index-mcp/scripts/**",
+]
+SPDX-FileCopyrightText = "2026 1c-ai-workbench contributors"
+SPDX-License-Identifier = "MIT"
+
+# Generated artifacts and tools that produce them are not source code.
+# They are excluded from the SPDX requirement by being in .gitignore.
+# However, any committed generated files still need REUSE compliance.
+[[annotations]]
+path = [
+    "**/*.min.js",
+    "**/*.min.css",
+    "**/package-lock.json",
+    "**/yarn.lock",
+    "**/Cargo.lock",
+    ]
+SPDX-FileCopyrightText = "2026 1c-ai-workbench contributors"
+SPDX-License-Identifier = "MIT"

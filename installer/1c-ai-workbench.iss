@@ -1,0 +1,1 @@
+\nSource: "\{#SourceRoot\}\\RELEASE_CHECKLIST\.md"; DestDir: "\{app\}"; Flags: ignoreversion\r?\n

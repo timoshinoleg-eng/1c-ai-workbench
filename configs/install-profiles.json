@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "0.1.0",
+  "profiles": [
+    {
+      "id": "demo",
+      "title": "Demo",
+      "goal": "Open the showcase, produce readiness evidence, and run a first search without deep setup.",
+      "steps": ["open_showcase", "healthcheck", "first_10_minutes", "local_search"],
+      "recommended_for": ["first meeting", "visual walkthrough", "non-technical stakeholder"]
+    },
+    {
+      "id": "partner",
+      "title": "Partner",
+      "goal": "Guide a partner from 1C dump to readiness report and role-based questions.",
+      "steps": ["show_dump_folder", "index_dump", "healthcheck", "first_10_minutes"],
+      "recommended_for": ["pilot setup", "implementation partner", "client handoff"]
+    },
+    {
+      "id": "developer",
+      "title": "Developer",
+      "goal": "Prepare code navigation, risk scan, explain-module, and metadata introspection workflows.",
+      "steps": ["ensure_indexer", "index_dump", "healthcheck", "risk_scan", "explain_module", "skills_bridge"],
+      "recommended_for": ["1C developer", "tech lead", "refactoring audit"]
+    },
+    {
+      "id": "advanced-ai",
+      "title": "Advanced AI",
+      "goal": "Connect MCP clients and expose Prompt Gallery / AI Rules / Skills Bridge for agent workflows.",
+      "steps": ["healthcheck", "mcp_setup_assistant", "prompt_gallery", "ai_rules", "skills_bridge", "live_1c_bridge_manual"],
+      "recommended_for": ["AI agent setup", "opencode", "Claude Code", "Cursor/VS Code"]
+    }
+  ]
+}

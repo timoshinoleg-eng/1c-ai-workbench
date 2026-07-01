@@ -1,0 +1,7 @@
+# Коммиты, которые git blame должен «проскакивать» (механические правки —
+# не меняют авторство содержимого). Включить локально:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub/GitLab уважают этот файл в blame-UI автоматически.
+
+# chore(repo): нормализация EOL к LF + .gitattributes
+26888a07d58351755fb8e487727c00d5b611eb95

@@ -1,0 +1,18 @@
+# Pre-subtree gitlink SHAs
+
+These are the submodule gitlinks that pointed at the two upstream
+projects from `main` immediately before they were de-registered in
+favour of vendored git subtrees. They are kept here as a permanent
+audit trail so that any future bisect or compliance review can prove
+which upstream tips were the basis for the subtree import.
+
+| Path | Upstream | Gitlink SHA on main | Notes |
+|---|---|---|---|
+| `tools/cc-1c-skills`   | `Nikolay-Shirokov/cc-1c-skills`   | `421ec5ce32620e8690b6df893bf796503077b13c` | de-registered in commit `4286e303` |
+| `tools/code-index-mcp` | `Regsorm/code-index-mcp`           | `a4b11028d61901dc28e0a88a355327bb3ecabe6f` | de-registered in commit `4286e303` |
+
+The current upstream tips inlined as vendored subtrees are recorded in
+`tools/SUBTREE.md` and may differ from these original gitlinks — those
+were the SHAs `main` was pointing at when the migration started; the
+subtree merge then advanced to the latest upstream `main` (see
+commits `4c8f299d` and `b235be52`).

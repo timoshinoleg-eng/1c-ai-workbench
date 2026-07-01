@@ -1,0 +1,88 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "1c-code-index": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "${WORKBENCH_ROOT}\\tools\\code-index-mcp\\target\\release\\bsl-indexer.exe",
+        "serve",
+        "--path",
+        "onec=${WORKBENCH_ROOT}\\generated\\index\\source-mirror",
+        "--transport",
+        "stdio"
+      ],
+      "environment": {
+        "CODE_INDEX_HOME": "${WORKBENCH_ROOT}\\generated\\code-index-home"
+      }
+    },
+    // EXPERIMENTAL — not in default catalog; requires opt-in + .NET 8 SDK
+    // locally. The v1.1.0 hardening pass added a protected PipeSecurity
+    // DACL and a mandatory --pipe-token gate, but the C# project has no
+    // CI build verification yet (no .NET runner in the public CI matrix).
+    // See SECURITY.md "Known limitations of v1.1.0".
+    "live-1c-bridge": {
+      "type": "local",
+      "enabled": false,
+      "command": [
+        "dotnet",
+        "run",
+        "--project",
+        "${WORKBENCH_ROOT}\\tools\\live-1c-bridge",
+        "--",
+        "--mode",
+        "mcp",
+        "--pipe-name",
+        "1c-com-bridge",
+        "--pipe-timeout",
+        "30000"
+      ],
+      "environment": {
+        "LIVE_1C_BRIDGE_UNSAFE": "0"
+      }
+    },
+    "1c-skills": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "python",
+        "${WORKBENCH_ROOT}\\tools\\skills-bridge\\server.py"
+      ],
+      "environment": {
+        "SOURCE_MIRROR": "${WORKBENCH_ROOT}\\generated\\index\\source-mirror"
+      }
+    },
+    "1c-ibcmd": {
+      "type": "local",
+      "enabled": false,
+      "command": [
+        "python",
+        "${WORKBENCH_ROOT}\\tools\\ibcmd-bridge\\server.py"
+      ],
+      "environment": {
+        "IBCMD_EXE": "ibcmd",
+        "IBCMD_ALLOW_WRITE": "0"
+      }
+    },
+    "1c-prompt-gallery": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "python",
+        "${WORKBENCH_ROOT}\\tools\\prompt-gallery\\server.py"
+      ],
+      "environment": {}
+    },
+    "1c-help-index": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "python",
+        "${WORKBENCH_ROOT}\\tools\\help-index-mcp\\server.py"
+      ],
+      "environment": {
+        "WORKBENCH_ROOT": "${WORKBENCH_ROOT}"
+      }
+    }
+  }
+}

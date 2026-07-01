@@ -1,0 +1,13 @@
+{
+  "name": "io.github.timoshinoleg-eng/live-1c-bridge",
+  "title": "live-1c-bridge",
+  "description": "Live 1C:Enterprise COM bridge MCP server. Runtime access to metadata, objects and queries through a local named-pipe COM host.",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "identifier": "live-1c-bridge",
+      "runtimeHint": "dotnet run --project tools/live-1c-bridge -- --mode mcp",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+1c-ai-workbench
+Copyright (c) 2026 1c-ai-workbench contributors
+
+This product includes software developed by third parties:
+
+================================================================================
+BSL Language Server (1c-syntax)
+Copyright (c) 1c-syntax contributors
+License: MIT (https://github.com/1c-syntax/bsl-language-server/blob/master/LICENSE.md)
+Used as: MCP wrapper / CLI invocation for diagnostics, explain/fix flows
+
+================================================================================
+OneScript (EvilBeaver)
+Copyright (c) EvilBeaver and OneScript contributors
+License: Apache License 2.0 (https://github.com/EvilBeaver/OneScript/blob/develop/LICENSE)
+Used as: Runtime for automation scripts via `oscript` CLI
+
+================================================================================
+cc-1c-skills (Nikolay-Shirokov)
+Copyright (c) 2025-2026 Nick Shirokov
+License: MIT (https://github.com/Nikolay-Shirokov/cc-1c-skills/blob/main/LICENSE)
+Used as: Vendored git subtree at tools/cc-1c-skills/, reference for 1C-specific AI skills (see tools/SUBTREE.md)
+
+================================================================================
+vanessa-runner
+Copyright (c) vanessa-opensource contributors
+License: Apache License 2.0 (https://github.com/vanessa-opensource/vanessa-runner)
+Used as: CI test orchestration reference; called via `vrunner` CLI (not bundled)
+
+================================================================================
+ai-review (Nikita-Filonov)
+Copyright (c) Nikita Filonov
+License: MIT (https://github.com/Nikita-Filonov/ai-review)
+Used as: CI-driven AI review workflow model reference (concepts, not code)
+
+================================================================================
+Vanessa-Automation
+Copyright (c) Pr-Mex and Vanessa-Automation contributors
+License: Apache License 2.0 (https://github.com/Pr-Mex/vanessa-automation)
+Used as: Gherkin/BDD methodology reference (deferred until live mode)
+
+================================================================================
+YAxUnit
+Copyright (c) BIA Technologies
+License: Apache License 2.0 (https://github.com/bia-technologies/yaxunit)
+Used as: Unit-test structure reference (deferred until live mode)
+
+================================================================================
+1C: Platform Tools (yellow-hammer)
+Copyright (c) yellow-hammer contributors
+License: MIT (https://github.com/yellow-hammer/vscode-1c-platform-tools)
+Used as: UX pattern reference (command surface, metadata navigation, test trees)
+
+================================================================================
+Landscape1C (Oxotka)
+Copyright (c) Oxotka and Landscape1C contributors
+License: MIT (https://github.com/Oxotka/Landscape1C)
+Used as: Integration card methodology reference; axes, path-based onboarding
+
+================================================================================
+For full attribution and legal boundaries, see docs/legal/BORROWING_MAP.md.
+
+The MIT license under which 1c-ai-workbench is distributed does not override
+the licenses of the third-party components listed above. Each component retains
+its original license and copyright. The original LICENSE files are preserved
+in the corresponding subdirectories (tools/cc-1c-skills/LICENSE,
+tools/code-index-mcp/LICENSE, tools/skills-bridge/LICENSE).
+
+The "1С" name and 1C:Enterprise platform are trademarks of 1C Company.
+This project is not affiliated with, endorsed by, or sponsored by 1C Company.

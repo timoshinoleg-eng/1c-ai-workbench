@@ -1,0 +1,69 @@
+# Runtime and generated data
+/generated/
+/logs/
+/dist/
+/.code-index/
+/.run-time/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local secrets and environment overrides
+.env
+.env.*
+*.env
+
+# Build outputs
+/tools/code-index-mcp/target/
+/tools/**/target/
+/tools/**/bin/
+/tools/**/obj/
+__pycache__/
+*.pyc
+.venv/
+venv/
+scripts/tmp_*.txt
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local agent/generated knowledge exports
+/.opencode/
+/.qoder/
+/.codegraph/
+/.agents/
+/.claude/
+
+# Git metadata (explicit for archive bundling)
+/.git/
+
+# Scan and install logs (transient)
+*.log
+*.log.err
+/logs/
+/docs/legal/scans/*.log
+/docs/legal/scans/*.log.err
+
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+.coverage
+htmlcov/
+.coverage.xml
+*.cover
+.tox/
+
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Internal planning docs (moved to private repo)
+/docs/grant/
+/docs/marketing/
+/docs/v1.1/

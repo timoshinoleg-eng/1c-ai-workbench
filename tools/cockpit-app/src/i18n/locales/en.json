@@ -1,0 +1,286 @@
+{
+  "app": {
+    "name": "1C AI Cockpit",
+    "tagline": "Local тАФ no data leaves this machine",
+    "github": "GitHub"
+  },
+  "nav": {
+    "cockpit": "Cockpit",
+    "search": "Search",
+    "help": "Help",
+    "risk": "Risk",
+    "settings": "Settings",
+    "onboarding": "Onboarding",
+    "chat": "Chat"
+  },
+  "cockpit": {
+    "title": "Cockpit",
+    "serversRunning": "{{running}}/{{total}} servers running",
+    "filesIndexed": "{{files}} files indexed",
+    "startAll": "Start all",
+    "stopAll": "Stop all",
+    "healthCheck": "Health check",
+    "mcpServers": "MCP servers",
+    "lastActivity": "last activity:",
+    "never": "тАФ",
+    "recentQueries": "Recent queries",
+    "noQueries": "No recent queries yet",
+    "noQueriesHint": "Once you wire up Search and Help pages, your last 5 queries will appear here for quick re-runs.",
+    "actions": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "ping": "Ping"
+    },
+    "status": {
+      "running": "running",
+      "stopped": "stopped",
+      "starting": "starting",
+      "stopping": "stopping",
+      "errored": "errored",
+      "disabled": "disabled",
+      "experimental": "experimental"
+    }
+  },
+  "servers": {
+    "1c-code-index": {
+      "name": "1C Code Index",
+      "description": "BSL code navigation, object metadata, call graph"
+    },
+    "1c-skills": {
+      "name": "1C Skills",
+      "description": "Read-only 1C-specific skills (16 tools)"
+    },
+    "1c-prompt-gallery": {
+      "name": "1C Prompt Gallery",
+      "description": "Prompt catalog exposed as callable tools"
+    },
+    "1c-help-index": {
+      "name": "1C Help Index",
+      "description": "Local 1C .hbk help search"
+    },
+    "1c-ibcmd": {
+      "name": "1C ibcmd",
+      "description": "Phase B export/import (experimental, disabled by default)"
+    },
+    "resolvedCommand": "Resolved command",
+    "resolvedEnv": "Resolved environment",
+    "copyError": "Copy error",
+    "errorCopied": "Error copied to clipboard",
+    "showStderr": "Show stderr tail",
+    "test": "Test",
+    "testing": "TestingтАж",
+    "testExitOk": "exit code {{code}}",
+    "testExitFailed": "exit code {{code}}"
+  },
+  "statusbar": {
+    "dump": "dump:",
+    "servers": "servers:",
+    "index": "index:",
+    "lastActivity": "last activity:",
+    "build": "build:"
+  },
+  "sidebar": {
+    "version": "v0.1.0",
+    "build": "build: dev"
+  },
+  "search": {
+    "description": "Local text, grep, and MCP tool search across the indexed 1C dump.",
+    "queryTitle": "Query",
+    "queryDescription": "Choose a mode and send a real MCP request.",
+    "modes": {
+      "text": "Text",
+      "grep": "Grep",
+      "mcp": "MCP"
+    },
+    "callsText": "Calls 1c-code-index.search_text.",
+    "callsGrep": "Calls 1c-code-index.grep_body with language: bsl.",
+    "toolPlaceholder": "tool name",
+    "runTool": "Run MCP tool",
+    "resultsTitle": "Results",
+    "requestFailed": "Request failed",
+    "noQueryYet": "No query yet",
+    "emptyTitle": "Type a query to begin",
+    "emptyDescription": "Results from MCP tools appear here.",
+    "placeholder": "e.g.: ╨Я╤А╨╕╤Е╨╛╨┤╨в╨╛╨▓╨░╤А╨╛╨▓, ╨Э╨╛╨╝╨╡╨╜╨║╨╗╨░╤В╤Г╤А╨░, ╨Ъ╨╛╨╜╤В╤А╨░╨│╨╡╨╜╤В╤Л",
+    "searchButton": "Search",
+    "searching": "SearchingтАж",
+    "column": {
+      "path": "Path",
+      "line": "Line",
+      "snippet": "Snippet",
+      "score": "Score"
+    }
+  },
+  "help": {
+    "description": "Local 1C help browser backed by help-index-mcp.",
+    "topicsTitle": "Topics",
+    "topicsDescription": "{{count}} visible topics",
+    "loadingTree": "Loading help treeтАж",
+    "searchPlaceholder": "Search helpтАж",
+    "searchAria": "Search help",
+    "emptyTitle": "Help index is empty",
+    "emptyDescription": "Run the help-index MCP reindex tool or check generated/help-index/help-index.db.",
+    "contentTitle": "Content",
+    "noTopicSelected": "No topic selected",
+    "noTopicSelectedDescription": "Pick a topic from the tree or search the help index.",
+    "resultsCount": "{{count}} search results",
+    "contentPlaceholder": "Selected topic content appears here.",
+    "column": {
+      "topic": "Topic",
+      "snippet": "Snippet"
+    }
+  },
+  "risk": {
+    "title": "Risk scan",
+    "description": "Surface suspicious patterns across the indexed 1C configuration.",
+    "runScan": "Run risk scan",
+    "scanning": "ScanningтАж",
+    "filtersTitle": "Filters",
+    "filtersDescription": "Narrow results by severity.",
+    "all": "All",
+    "findingsTitle": "Findings",
+    "allSeverities": "All severities",
+    "severity": "Severity: {{value}}",
+    "noMatchesFilter": "No findings match this filter",
+    "noFindingsYet": "No findings yet",
+    "noFindingsDescription": "Click Run risk scan to analyze the indexed dump.",
+    "column": {
+      "severity": "Severity",
+      "category": "Category",
+      "title": "Title",
+      "object": "Object",
+      "path": "Path",
+      "confidence": "Confidence"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Local paths, per-server toggles, and metadata.",
+    "openConfig": "Open config file",
+    "reset": "Reset",
+    "save": "Save",
+    "loading": "LoadingтАж",
+    "loadingSettings": "Loading settingsтАж",
+    "dumpDirectoryUpdated": "Dump directory updated",
+    "workbenchDirectoryUpdated": "Workbench directory updated",
+    "settingsSaved": "Settings saved",
+    "settingsReset": "Settings reset",
+    "pathsValidated": "Paths validated",
+    "pathsBlocked": "Path validation found blockers",
+    "saveFailed": "Save failed",
+    "resetFailed": "Reset failed",
+    "validationFailed": "Path validation failed",
+    "openConfigFailed": "Failed to open config file",
+    "fallbackNotice": "Loaded fallback settings: {{error}}",
+    "pathsTitle": "Paths",
+    "pathsDescription": "Local directories the Cockpit reads from.",
+    "validatePaths": "Validate paths",
+    "serversTitle": "Servers",
+    "serversDescription": "Per-server enable / disable. Disabled servers are not started by Start all.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "aboutTitle": "About",
+    "aboutVersion": "1C AI Cockpit ┬╖ v0.1.0",
+    "aboutLicense": "License: MIT (Cockpit scaffold) тАФ see repo for upstream licenses.",
+    "field": {
+      "dumpDir": "Dump directory",
+      "dumpDirDescription": "Folder containing the exported 1C configuration (read-only).",
+      "workbenchPath": "Workbench path",
+      "workbenchPathDescription": "Root of the 1c-ai-workbench checkout.",
+      "codeIndexHome": "code-index home",
+      "codeIndexHomeDescription": "Where bsl-indexer writes its SQLite and cache.",
+      "helpDbPath": "Help index DB",
+      "helpDbPathDescription": "Path to the help-index SQLite file.",
+      "apiKey": "API key",
+      "apiKeyDescription": "LLM provider key. OpenAI-compatible APIs work (OpenAI, OpenRouter, LM Studio, Ollama).",
+      "baseUrl": "Base URL",
+      "baseUrlDescription": "OpenAI-compatible API endpoint. Default https://api.openai.com/v1. For local: http://localhost:1234/v1.",
+      "model": "Model",
+      "modelDescription": "Model name. Default gpt-4o-mini."
+    },
+    "aiTitle": "AI (chat model)",
+    "aiDescription": "The API key is used by the built-in chat. It is stored only locally.",
+    "showKey": "Show key",
+    "hideKey": "Hide key"
+  },
+  "chat": {
+    "title": "Chat",
+    "description": "Ask the local AI about the indexed 1C dump. The model can search files and answer with references.",
+    "session": "1C AI assistant",
+    "apiHint": "Configure the API key in Settings → AI. The model can call 1c-code-index, 1c-skills, 1c-help-index.",
+    "empty": "Ask a question about the 1C dump. For example: \"Where is the total amount calculated in the sales document?\"",
+    "thinking": "Thinking...",
+    "toolCall": "Tool",
+    "placeholder": "Ask about 1C...",
+    "send": "Send",
+    "stop": "Stop",
+    "noApi": "API key not configured?",
+    "openSettings": "Open Settings → AI"
+  },
+  "onboarding": {
+    "title": "Onboarding",
+    "description": "Five validation steps to get the Cockpit ready.",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "openCockpit": "Open Cockpit",
+    "step": {
+      "welcome": "Welcome",
+      "dump": "Dump directory",
+      "servers": "Confirm servers",
+      "index": "Run first index",
+      "done": "Done"
+    },
+    "welcomeTitle": "Welcome to 1C AI Cockpit",
+    "welcomeDescription": "A local GUI for the 1C AI Workbench. No data leaves this machine.",
+    "welcomeBullets": {
+      "servers": "Start, stop, and inspect the 5 Cockpit MCP servers.",
+      "search": "Run local search, help lookup, and risk scans through real MCP calls.",
+      "validate": "Validate the dump directory before starting the first index."
+    },
+    "dumpTitle": "Pick your dump directory",
+    "dumpDescription": "Folder containing the exported 1C configuration. Read-only.",
+    "pick": "Pick",
+    "validate": "Validate",
+    "pickWorkbench": "Browse Workbench",
+    "validateConfig": "Validate paths",
+    "configBlocked": "Workbench configuration is blocked. Fix the checklist before indexing.",
+    "dumpValidated": "Dump directory validated",
+    "dumpFailed": "Dump directory failed validation",
+    "serversTitle": "Confirm MCP servers",
+    "serversDescription": "The list mirrors the 5-server Cockpit catalog and maps to matching entries in opencode.jsonc.",
+    "refresh": "Refresh",
+    "notLoaded": "not loaded",
+    "indexTitle": "Run first index",
+    "indexDescription": "Calls 1c-code-index.index for {{path}}.",
+    "indexButtonIdle": "Start index",
+    "indexButtonDone": "Re-run index",
+    "indexButtonBusy": "IndexingтАж",
+    "indexCompleted": "index command completed",
+    "doneTitle": "Ready",
+    "doneDescription": "Validation is complete. Open the Cockpit and start the MCP servers.",
+    "firstIndexDone": "First index command completed",
+    "check": {
+      "name": "Check",
+      "status": "Status",
+      "message": "Message"
+    },
+    "serverTable": {
+      "server": "Server",
+      "status": "Status",
+      "command": "Command",
+      "diagnostics": "Diagnostics"
+    }
+  },
+  "common": {
+    "loading": "LoadingтАж",
+    "error": "Error",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Saved",
+    "open": "Open",
+    "close": "Close"
+  }
+}

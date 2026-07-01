@@ -1,0 +1,84 @@
+name: release
+
+# Triggers manually. The release pipeline builds the public bsl-indexer.exe
+# asset and uploads it plus a SHA256SUMS.txt to the GitHub Release for the tag.
+#
+# IMPORTANT: this workflow is intentionally at the superproject root, not
+# under tools/code-index-mcp/.github/workflows/. GitHub Actions only
+# triggers on workflows that live in the .github/ directory of the repo
+# being tagged; vendored release.yml files inside subtrees are inert
+# when the superproject is what gets tagged.
+#
+# See tools/SUBTREE.md for the vendoring model and the gap this
+# workflow closes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.1.0). Leave empty to publish HEAD.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG_STYLE: never
+
+jobs:
+  build-bsl-indexer:
+    name: Build bsl-indexer.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/code-index-mcp
+
+      - name: Build release binary
+        working-directory: tools/code-index-mcp
+        shell: pwsh
+        run: |
+          cargo build --release -p bsl-indexer --features enrichment
+          $exe = "target\release\bsl-indexer.exe"
+          if (-not (Test-Path $exe)) { throw "bsl-indexer.exe missing after build" }
+          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "Built $exe ($size MB)"
+
+      - name: Smoke test the built binary
+        shell: pwsh
+        run: |
+          $exe = "tools\code-index-mcp\target\release\bsl-indexer.exe"
+          & $exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe --help exited with $LASTEXITCODE" }
+          Write-Host "OK: bsl-indexer.exe --help exits 0"
+
+      - name: Generate checksum
+        shell: pwsh
+        working-directory: tools/code-index-mcp/target/release
+        run: |
+          $exe = "bsl-indexer.exe"
+          $sum = (Get-FileHash $exe -Algorithm SHA256).Hash
+          "$sum  $exe" | Out-File -Encoding UTF8 bsl-indexer.exe.SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            tools/code-index-mcp/target/release/bsl-indexer.exe
+            tools/code-index-mcp/target/release/bsl-indexer.exe.SHA256SUMS.txt
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
