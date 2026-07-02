@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [string]$WorkbenchRoot = "C:\1c-ai-workbench",
+  [Alias("DumpPath")]
   [string]$DumpRoot = "C:\1c-ai-client\dump",
   [switch]$Force
 )
@@ -45,7 +46,7 @@ try {
   }
   $files = @(Get-ChildItem -LiteralPath $safeDumpRoot -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1)
   if ($files.Count -eq 0) { throw "Dump folder is empty: $safeDumpRoot. Put 1C XML/BSL dump files there and rerun." }
-  if (-not (Test-Path $binary)) { throw "bsl-indexer.exe not found. Run scripts\03_build_bsl_indexer.ps1 first." }
+  if (-not (Test-Path $binary)) { throw "bsl-indexer.exe not found. Run scripts\setup.ps1 first or unpack a release artifact with the prebuilt binary." }
 
   Write-Host "[INFO] Mirroring dump to generated index workspace. Source dump remains untouched."
   Write-Host "[INFO] Source: $safeDumpRoot"

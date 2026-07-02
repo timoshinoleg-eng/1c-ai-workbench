@@ -10,25 +10,30 @@ Pipeline связывает все ключевые smoke-проверки в о
 
 ```powershell
 cd C:\1c-ai-workbench
-.\scripts\22_run_e2e_smoke.ps1 -SkipIndex
+.\scripts\setup.ps1
+.\scripts\04_index_1c_dump.ps1 -DumpRoot "C:\1c-ai-client\dump" -Force
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex
 ```
+
+`-SkipIndex` пропускает только повторную индексацию. Перед этим должен уже
+существовать `generated\index\source-mirror\.code-index\index.db`.
 
 С полной переиндексацией (долго):
 
 ```powershell
-.\scripts\22_run_e2e_smoke.ps1
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump"
 ```
 
 Для CI (warnings = fail):
 
 ```powershell
-.\scripts\22_run_e2e_smoke.ps1 -SkipIndex -Strict
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex -Strict
 ```
 
 С открытием report после PASS:
 
 ```powershell
-.\scripts\22_run_e2e_smoke.ps1 -SkipIndex -OpenReport
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex -OpenReport
 ```
 
 ## Шаги
@@ -38,9 +43,9 @@ cd C:\1c-ai-workbench
 | 0 | env_precheck | inline | python, bsl-indexer.exe, dump dir |
 | 1 | index_1c_dump | 04_index_1c_dump.ps1 | переиндексация выгрузки (-SkipIndex чтобы пропустить) |
 | 2 | healthcheck | 06_healthcheck.ps1 | binary, index, logs, stats, query, mcp help (6 checks) |
-| 3 | skills_bridge_smoke | 16_check_skills_bridge.ps1 | 16 tools, audit_metadata, cf_info, validate |
-| 4 | ibcmd_bridge_smoke | 17_check_ibcmd_bridge.ps1 | 6 tools, dry-run, write-gate, compare |
-| 5 | prompt_gallery_smoke | 18_check_prompt_gallery.ps1 | 23 tools, 20 prompts, render, search |
+| 3 | skills_bridge_smoke | 16_check_skills_bridge.ps1 | 16 tools, `.venv`, source-independent smoke; indexed fixtures when available |
+| 4 | ibcmd_bridge_smoke | 17_check_ibcmd_bridge.ps1 | 6 tools, `.venv`, dry-run, write-gate; compare when source mirror exists |
+| 5 | prompt_gallery_smoke | 18_check_prompt_gallery.ps1 | prompt tools, prompts, `.venv`, render, search |
 | 6 | corporate_mode_report | 20_check_corporate_mode.ps1 | policy, MCP disabled, gitignore, secret scan |
 | 7 | mcp_context_inspector | 21_export_mcp_context.ps1 | 8 servers, 20 prompt tools, 12 integration tools |
 | 8 | local_search_smoke | inline | bsl-indexer search-text по 5 queries |

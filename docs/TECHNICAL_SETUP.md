@@ -13,9 +13,12 @@ A local MVP stand for asking an MCP-capable AI client questions about a 1C confi
 - Windows 10/11.
 - PowerShell 5.1+.
 - Git for Windows.
-- Rust toolchain with `cargo` and `rustc` in PATH.
+- Python 3.10+.
+- GitHub Releases access for `scripts\setup.ps1` to download the prebuilt
+  Windows `bsl-indexer.exe`, or an already unpacked partner/release ZIP.
 - A 1C configuration dump in `C:\1c-ai-client\dump`.
 - Cursor, VS Code with MCP support, Claude Desktop, or another MCP client.
+- Optional for source builds: Rust toolchain with `cargo` and `rustc` in PATH.
 
 ## 3. Prepare the 1C dump
 
@@ -34,14 +37,18 @@ Open PowerShell:
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 cd C:\1c-ai-workbench
+.\scripts\setup.ps1
 .\scripts\01_check_env.ps1
-.\scripts\02_clone_repos.ps1
-.\scripts\03_build_bsl_indexer.ps1
+.\scripts\16_check_skills_bridge.ps1
+.\scripts\17_check_ibcmd_bridge.ps1
+.\scripts\18_check_prompt_gallery.ps1
 .\scripts\04_index_1c_dump.ps1 -DumpRoot "C:\1c-ai-client\dump" -Force
 .\scripts\06_healthcheck.ps1
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex
 ```
 
 If `04_index_1c_dump.ps1` says the dump is empty, copy the 1C files to `C:\1c-ai-client\dump` and rerun it.
+If `setup.ps1` cannot download `bsl-indexer.exe`, unpack the release artifact manually into `tools\code-index-mcp\target\release\` or run `scripts\03_build_bsl_indexer.ps1` in a developer environment.
 
 ## 5. Connect Cursor / VS Code
 

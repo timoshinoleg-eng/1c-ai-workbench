@@ -24,21 +24,22 @@
 
 **Симптом:** `missing ...\target\release\bsl-indexer.exe`.
 
-**Причина:** Rust-бинарь не собран. Это блокер — без него локальный поиск и MCP
-code-index не стартуют.
+**Причина:** prebuilt Rust-бинарь не скачан или release/partner ZIP распакован
+неполностью. Это блокер — без него локальный поиск и MCP code-index не стартуют.
 
 **Фикс:**
 
 ```powershell
 cd C:\1c-ai-workbench
-.\scripts\03_build_bsl_indexer.ps1 -WorkbenchRoot .
+.\scripts\setup.ps1
 ```
 
-Ожидаемое время: 8-12 минут на первой сборке (~280 crates). Последующие
-сборки — секунды (incremental).
+`setup.ps1` скачивает `bsl-indexer.exe` из release `v0.9.0-pilot` и проверяет
+SHA256. Если у стенда нет доступа к GitHub Releases, распакуйте release artifact
+в `tools\code-index-mcp\target\release\`.
 
-Если cargo не находится — установить [rustup](https://rustup.rs/) и перезапустить
-PowerShell.
+Source-build fallback для разработчиков: `.\scripts\03_build_bsl_indexer.ps1 -WorkbenchRoot .`.
+Если cargo не находится — установить [rustup](https://rustup.rs/) и перезапустить PowerShell.
 
 ## 2. index exists — FAIL
 

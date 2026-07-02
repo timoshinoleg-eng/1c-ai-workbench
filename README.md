@@ -74,24 +74,35 @@ mirror. Исходная выгрузка не изменяется, live write 
 
 - Windows 10/11.
 - PowerShell 5.1+.
-- Rust toolchain с `cargo` и `rustc` для сборки `bsl-indexer`.
+- Git for Windows.
 - Python 3.10+ для Python MCP bridges.
+- Доступ к GitHub Releases для загрузки prebuilt `bsl-indexer.exe`
+  через `scripts\setup.ps1` либо уже распакованный release/partner ZIP.
 - Файлы выгрузки конфигурации 1С в `C:\1c-ai-client\dump`.
+- Опционально: Rust toolchain с `cargo` и `rustc`, если нужно пересобрать
+  `bsl-indexer` из исходников.
 
-Зависимости bridge-серверов:
-
-```powershell
-pip install -r tools\skills-bridge\requirements.txt
-pip install -r tools\prompt-gallery\requirements.txt
-pip install -r tools\ibcmd-bridge\requirements.txt
-pip install -r tools\help-index-mcp\requirements.txt
-```
+`scripts\setup.ps1` создаёт `.venv`, ставит зависимости bridge-серверов и
+скачивает `tools\code-index-mcp\target\release\bsl-indexer.exe` из release
+`v0.9.0-pilot` с SHA256-проверкой.
 
 ## Быстрый старт
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 cd C:\1c-ai-workbench
+.\scripts\setup.ps1
+.\scripts\16_check_skills_bridge.ps1
+.\scripts\17_check_ibcmd_bridge.ps1
+.\scripts\18_check_prompt_gallery.ps1
+.\scripts\04_index_1c_dump.ps1 -DumpRoot "C:\1c-ai-client\dump" -Force
+.\scripts\06_healthcheck.ps1
+.\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex
+```
+
+После этого можно открыть интерактивный launcher:
+
+```powershell
 .\START_HERE.ps1
 ```
 
@@ -100,12 +111,15 @@ cd C:\1c-ai-workbench
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 cd C:\1c-ai-workbench
+.\scripts\setup.ps1
 .\scripts\01_check_env.ps1
 .\scripts\02_clone_repos.ps1
-.\scripts\03_build_bsl_indexer.ps1
 .\scripts\04_index_1c_dump.ps1 -DumpRoot "C:\1c-ai-client\dump" -Force
 .\scripts\06_healthcheck.ps1
 ```
+
+`scripts\03_build_bsl_indexer.ps1` нужен только разработчикам, которым нужно
+пересобрать Rust-бинарник локально вместо использования release artifact.
 
 ## MCP-серверы
 
