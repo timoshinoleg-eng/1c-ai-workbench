@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [string]$WorkbenchRoot = "C:\1c-ai-workbench",
+  [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
   [Alias("DumpPath")]
   [string]$DumpRoot = "C:\1c-ai-client\dump",
   [switch]$Force
