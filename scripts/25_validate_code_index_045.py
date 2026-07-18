@@ -6,6 +6,7 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -191,7 +192,7 @@ def main() -> int:
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(rendered, encoding="utf-8")
-    print(rendered, end="")
+    sys.stdout.buffer.write(rendered.encode("utf-8"))
     return 0
 
 

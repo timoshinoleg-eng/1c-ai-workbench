@@ -5,6 +5,7 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from contextlib import closing
 from pathlib import Path
@@ -158,7 +159,7 @@ def main() -> int:
     if args.markdown_report:
         args.markdown_report.parent.mkdir(parents=True, exist_ok=True)
         args.markdown_report.write_text(rendered_markdown, encoding="utf-8")
-    print(rendered_json, end="")
+    sys.stdout.buffer.write(rendered_json.encode("utf-8"))
     return 0
 
 

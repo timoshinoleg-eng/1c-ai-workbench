@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,8 @@ def main() -> int:
             if not isinstance(adapter.get(field), str) or not adapter[field].strip():
                 raise AssertionError(f"{adapter['id']} is missing {field}")
 
-    print(json.dumps({"adapters": ids, "default_policy": "disabled", "verdict": "PASS"}, indent=2))
+    rendered = json.dumps({"adapters": ids, "default_policy": "disabled", "verdict": "PASS"}, indent=2) + "\n"
+    sys.stdout.buffer.write(rendered.encode("utf-8"))
     return 0
 
 
