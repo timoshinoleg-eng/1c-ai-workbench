@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 
 use super::types::{
-    sha256_hex, hash_ast,
-    ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport, ParsedVariable,
+    hash_ast, sha256_hex, ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport,
+    ParsedVariable,
 };
 use super::LanguageParser;
 
@@ -35,7 +35,10 @@ fn node_text<'a>(node: tree_sitter::Node<'a>, source: &'a [u8]) -> &'a str {
 }
 
 /// Найти первый дочерний узел с заданным kind
-fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+fn find_child_by_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == kind {
@@ -46,7 +49,10 @@ fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tre
 }
 
 /// Найти все дочерние узлы с заданным kind
-fn find_children_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Vec<tree_sitter::Node<'a>> {
+fn find_children_by_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Vec<tree_sitter::Node<'a>> {
     let mut result = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -141,7 +147,14 @@ fn visit_node(
             if let Some(args_node) = node.child_by_field_name("arguments") {
                 let mut cursor = args_node.walk();
                 for arg in args_node.children(&mut cursor) {
-                    visit_node(arg, ctx, class_name, current_func, args_node.kind(), depth + 1);
+                    visit_node(
+                        arg,
+                        ctx,
+                        class_name,
+                        current_func,
+                        args_node.kind(),
+                        depth + 1,
+                    );
                 }
             }
         }
@@ -169,7 +182,8 @@ fn visit_class(
     let source = ctx.source;
 
     // Имя класса: поле name
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -230,7 +244,14 @@ fn visit_class(
     if let Some(class_body) = node.child_by_field_name("body") {
         let mut cursor = class_body.walk();
         for child in class_body.children(&mut cursor) {
-            visit_node(child, ctx, Some(&name), current_func, class_body.kind(), depth + 1);
+            visit_node(
+                child,
+                ctx,
+                Some(&name),
+                current_func,
+                class_body.kind(),
+                depth + 1,
+            );
         }
     }
 }
@@ -245,7 +266,8 @@ fn visit_method(
     let source = ctx.source;
 
     // Имя метода: поле name
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -260,11 +282,13 @@ fn visit_method(
     let line_end = node.end_position().row + 1;
 
     // Параметры: поле parameters
-    let args = node.child_by_field_name("parameters")
+    let args = node
+        .child_by_field_name("parameters")
         .map(|n| node_text(n, source).to_string());
 
     // Тип возвращаемого значения: поле type
-    let return_type = node.child_by_field_name("type")
+    let return_type = node
+        .child_by_field_name("type")
         .map(|n| node_text(n, source).to_string());
 
     // Модификаторы (для определения async — в Java нет, но есть в некоторых фреймворках)
@@ -293,7 +317,14 @@ fn visit_method(
     if let Some(body_node) = node.child_by_field_name("body") {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+                1,
+            );
         }
     }
 }
@@ -308,7 +339,8 @@ fn visit_constructor(
     let source = ctx.source;
 
     // Имя конструктора = имя класса
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_else(|| class_name.unwrap_or("").to_string());
 
@@ -321,7 +353,8 @@ fn visit_constructor(
     let line_start = node.start_position().row + 1;
     let line_end = node.end_position().row + 1;
 
-    let args = node.child_by_field_name("parameters")
+    let args = node
+        .child_by_field_name("parameters")
         .map(|n| node_text(n, source).to_string());
 
     let docstring = extract_javadoc(node, source);
@@ -346,7 +379,14 @@ fn visit_constructor(
     if let Some(body_node) = node.child_by_field_name("body") {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+                1,
+            );
         }
     }
 }
@@ -360,7 +400,8 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
     // import java.util.*; → module = "java.util", name = "*"
     // import static java.lang.Math.PI; → kind = "static"
 
-    let is_static = node.child_by_field_name("static")
+    let is_static = node
+        .child_by_field_name("static")
         .map(|n| node_text(n, source) == "static")
         .unwrap_or(false);
 
@@ -395,7 +436,11 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
         (None, Some(full_path))
     };
 
-    let kind = if is_static { "static".to_string() } else { "import".to_string() };
+    let kind = if is_static {
+        "static".to_string()
+    } else {
+        "import".to_string()
+    };
 
     ctx.imports.push(ParsedImport {
         module,
@@ -412,7 +457,8 @@ fn visit_call(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Opt
     let line = node.start_position().row + 1;
 
     // Callee: поле name (имя метода) + необязательное поле object
-    let method_name = node.child_by_field_name("name")
+    let method_name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -428,7 +474,11 @@ fn visit_call(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Opt
     };
 
     let caller = current_func.unwrap_or("<module>").to_string();
-    ctx.calls.push(ParsedCall { caller, callee, line });
+    ctx.calls.push(ParsedCall {
+        caller,
+        callee,
+        line,
+    });
 }
 
 /// Обработать field_declaration (static/final поля → переменные)
@@ -438,10 +488,12 @@ fn visit_field(node: tree_sitter::Node, ctx: &mut VisitContext, _parent_kind: &s
 
     // Проверяем наличие модификаторов static/final
     let modifiers_node = find_child_by_kind(node, "modifiers");
-    let is_static_or_final = modifiers_node.map(|m| {
-        let mods_text = node_text(m, source);
-        mods_text.contains("static") || mods_text.contains("final")
-    }).unwrap_or(false);
+    let is_static_or_final = modifiers_node
+        .map(|m| {
+            let mods_text = node_text(m, source);
+            mods_text.contains("static") || mods_text.contains("final")
+        })
+        .unwrap_or(false);
 
     if !is_static_or_final {
         return;
@@ -450,7 +502,8 @@ fn visit_field(node: tree_sitter::Node, ctx: &mut VisitContext, _parent_kind: &s
     // variable_declarator внутри field_declaration
     let declarators = find_children_by_kind(node, "variable_declarator");
     for decl in declarators {
-        let name = decl.child_by_field_name("name")
+        let name = decl
+            .child_by_field_name("name")
             .map(|n| node_text(n, source).to_string())
             .unwrap_or_default();
 
@@ -458,15 +511,14 @@ fn visit_field(node: tree_sitter::Node, ctx: &mut VisitContext, _parent_kind: &s
             continue;
         }
 
-        let value = decl.child_by_field_name("value")
-            .map(|n| {
-                let text = node_text(n, source);
-                if text.chars().count() > 200 {
-                    text.chars().take(200).collect()
-                } else {
-                    text.to_string()
-                }
-            });
+        let value = decl.child_by_field_name("value").map(|n| {
+            let text = node_text(n, source);
+            if text.chars().count() > 200 {
+                text.chars().take(200).collect()
+            } else {
+                text.to_string()
+            }
+        });
 
         ctx.variables.push(ParsedVariable { name, value, line });
     }
@@ -529,7 +581,11 @@ mod tests {
         let result = parser.parse(source, "Runnable.java").unwrap();
         assert_eq!(result.classes.len(), 1);
         assert_eq!(result.classes[0].name, "Runnable");
-        assert!(result.classes[0].bases.as_deref().unwrap_or("").contains("interface"));
+        assert!(result.classes[0]
+            .bases
+            .as_deref()
+            .unwrap_or("")
+            .contains("interface"));
     }
 
     #[test]
@@ -538,7 +594,10 @@ mod tests {
         let source = "import java.util.List;\nimport java.util.ArrayList;\npublic class Test {}\n";
         let result = parser.parse(source, "Test.java").unwrap();
         assert!(result.imports.len() >= 2);
-        assert!(result.imports.iter().any(|i| i.name.as_deref() == Some("List")));
+        assert!(result
+            .imports
+            .iter()
+            .any(|i| i.name.as_deref() == Some("List")));
     }
 
     #[test]

@@ -60,6 +60,11 @@ function Assert-InstalledPayload {
     $path = Join-Path $installDir $relativePath
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Installed payload missing: $path" }
   }
+  $indexer = Join-Path $installDir "tools\code-index-mcp\target\release\bsl-indexer.exe"
+  $indexerVersion = (& $indexer --version 2>$null | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $indexerVersion -ne "code-index 0.45.0") {
+    throw "Installed indexer version mismatch. Expected 'code-index 0.45.0', got '$indexerVersion'."
+  }
 }
 
 function Assert-Signature([string]$Path) {

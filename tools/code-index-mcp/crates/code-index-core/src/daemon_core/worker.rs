@@ -102,7 +102,11 @@ pub fn run_worker(
     // включая открытие in-memory Storage — чтобы в памяти одновременно жил
     // максимум ОДИН in-memory storage (ограничено max_concurrent_initial).
     let _permit = initial_limiter.as_ref().map(|sem| {
-        eprintln!("[worker:{}] ждём слота initial reindex (доступно {})", path.display(), sem.available_permits());
+        eprintln!(
+            "[worker:{}] ждём слота initial reindex (доступно {})",
+            path.display(),
+            sem.available_permits()
+        );
         let sem = sem.clone();
         tokio_block_on_value(async move { sem.acquire_owned().await.expect("semaphore closed") })
     });
@@ -121,26 +125,39 @@ pub fn run_worker(
     //    * Если БД новая (первый запуск на этой папке) — in-memory для
     //      скорости, потом flush на диск и reopen в disk для watcher'а.
     let db_existed_before = db_path.exists()
-        && std::fs::metadata(&db_path).map(|m| m.len() > 0).unwrap_or(false);
+        && std::fs::metadata(&db_path)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false);
 
     let mut storage = if db_existed_before {
-        eprintln!("[worker:{}] БД уже существует — открываем сразу в disk", path.display());
+        eprintln!(
+            "[worker:{}] БД уже существует — открываем сразу в disk",
+            path.display()
+        );
         match Storage::open_file(&db_path) {
             Ok(s) => s,
             Err(e) => {
                 tokio_block_on(async {
-                    state.set_error(&path, format!("Storage::open_file: {}", e)).await;
+                    state
+                        .set_error(&path, format!("Storage::open_file: {}", e))
+                        .await;
                 });
                 return;
             }
         }
     } else {
-        eprintln!("[worker:{}] новая БД — открываем в {}", path.display(), storage_config.mode);
+        eprintln!(
+            "[worker:{}] новая БД — открываем в {}",
+            path.display(),
+            storage_config.mode
+        );
         match Storage::open_auto(&db_path, &storage_config) {
             Ok(s) => s,
             Err(e) => {
                 tokio_block_on(async {
-                    state.set_error(&path, format!("Storage::open_auto: {}", e)).await;
+                    state
+                        .set_error(&path, format!("Storage::open_auto: {}", e))
+                        .await;
                 });
                 return;
             }
@@ -165,7 +182,9 @@ pub fn run_worker(
         if let Err(e) = proc.migrate_schema(storage.conn()) {
             eprintln!(
                 "[worker:{}] migrate_schema ('{}') упал: {}",
-                path.display(), proc.name(), e
+                path.display(),
+                proc.name(),
+                e
             );
         }
         let exts = proc.schema_extensions();
@@ -174,12 +193,16 @@ pub fn run_worker(
                 eprintln!(
                     "[worker:{}] apply_schema_extensions ('{}') упал: {}. \
                      Базовая индексация продолжится, но extension-tools могут не работать.",
-                    path.display(), proc.name(), e
+                    path.display(),
+                    proc.name(),
+                    e
                 );
             } else {
                 eprintln!(
                     "[worker:{}] schema_extensions процессора '{}' применены ({} DDL)",
-                    path.display(), proc.name(), exts.len()
+                    path.display(),
+                    proc.name(),
+                    exts.len()
                 );
             }
         }
@@ -187,10 +210,16 @@ pub fn run_worker(
 
     eprintln!("[worker:{}] initial reindex", path.display());
 
-    // 6. Полная переиндексация (fast-path по mtime, если БД уже есть)
+    // 6. Полная переиндексация (fast-path по mtime, если БД уже есть).
+    //    Первичная индексация демона — полный путь (НЕ инкремент), поэтому
+    //    сборщик extras BSL здесь уместен (инкрементальные обновления идут
+    //    через index_extras_for_files и сборщик не задействуют).
+    let parse_collector = resolved_processor
+        .as_ref()
+        .and_then(|proc| proc.parse_collector());
     let indexer_result = {
         let mut indexer = Indexer::with_config(&mut storage, index_config.clone());
-        indexer.full_reindex(&path, false)
+        indexer.full_reindex_with_collector(&path, false, parse_collector.as_deref())
     };
     let (reindex_indexed, reindex_deleted) = match indexer_result {
         Ok(result) => {
@@ -240,7 +269,8 @@ pub fn run_worker(
             eprintln!(
                 "[worker:{}] index_extras пропущен: данные не менялись (mtime fast-path), \
                  extras процессора '{}' уже на месте",
-                path.display(), proc.name()
+                path.display(),
+                proc.name()
             );
         } else {
             let t0 = std::time::Instant::now();
@@ -248,12 +278,16 @@ pub fn run_worker(
                 eprintln!(
                     "[worker:{}] index_extras процессора '{}' упал: {}. \
                      Базовая индексация при этом сохранена.",
-                    path.display(), proc.name(), e
+                    path.display(),
+                    proc.name(),
+                    e
                 );
             } else {
                 eprintln!(
                     "[worker:{}] index_extras (полный) процессора '{}' выполнен за {} мс",
-                    path.display(), proc.name(), t0.elapsed().as_millis()
+                    path.display(),
+                    proc.name(),
+                    t0.elapsed().as_millis()
                 );
             }
         }
@@ -263,14 +297,20 @@ pub fn run_worker(
     //    Если уже был disk — ничего делать не нужно, изменения уже на диске.
     if !db_existed_before {
         if let Err(e) = storage.flush_to_disk(&db_path) {
-            eprintln!("[worker:{}] предупреждение: flush_to_disk: {}", path.display(), e);
+            eprintln!(
+                "[worker:{}] предупреждение: flush_to_disk: {}",
+                path.display(),
+                e
+            );
         }
         drop(storage);
         storage = match Storage::open_file(&db_path) {
             Ok(s) => s,
             Err(e) => {
                 tokio_block_on(async {
-                    state.set_error(&path, format!("Storage::open_file (disk reopen): {}", e)).await;
+                    state
+                        .set_error(&path, format!("Storage::open_file (disk reopen): {}", e))
+                        .await;
                 });
                 return;
             }
@@ -285,17 +325,23 @@ pub fn run_worker(
         Ok((busy, log_pages, _)) if busy == 0 => {
             eprintln!(
                 "[worker:{}] post-initial WAL checkpoint: {} страниц вытеснено",
-                path.display(), log_pages
+                path.display(),
+                log_pages
             );
         }
         Ok((busy, _, _)) => {
             eprintln!(
                 "[worker:{}] post-initial WAL checkpoint: busy={} (частичный)",
-                path.display(), busy
+                path.display(),
+                busy
             );
         }
         Err(e) => {
-            eprintln!("[worker:{}] post-initial checkpoint_truncate: {}", path.display(), e);
+            eprintln!(
+                "[worker:{}] post-initial checkpoint_truncate: {}",
+                path.display(),
+                e
+            );
         }
     }
 
@@ -320,7 +366,9 @@ pub fn run_worker(
         Ok(pair) => pair,
         Err(e) => {
             tokio_block_on(async {
-                state.set_error(&path, format!("create_watcher: {}", e)).await;
+                state
+                    .set_error(&path, format!("create_watcher: {}", e))
+                    .await;
             });
             return;
         }
@@ -328,8 +376,12 @@ pub fn run_worker(
     // Держим watcher на стеке — при drop watcher остановится.
     let _watcher = watcher;
 
-    eprintln!("[worker:{}] watcher активен (debounce={}ms, batch={}ms)",
-        path.display(), debounce_ms, batch_ms);
+    eprintln!(
+        "[worker:{}] watcher активен (debounce={}ms, batch={}ms)",
+        path.display(),
+        debounce_ms,
+        batch_ms
+    );
 
     let registry = ParserRegistry::from_languages(&index_config.languages);
     // Эффективный лимит для file_contents — пробросим в apply_event,
@@ -483,7 +535,11 @@ pub fn run_worker(
 
     eprintln!("[worker:{}] shutdown, финальный checkpoint", path.display());
     if let Err(e) = storage.checkpoint_truncate() {
-        eprintln!("[worker:{}] финальный checkpoint_truncate: {}", path.display(), e);
+        eprintln!(
+            "[worker:{}] финальный checkpoint_truncate: {}",
+            path.display(),
+            e
+        );
     }
 }
 
@@ -602,13 +658,19 @@ fn apply_event(
                             return;
                         }
                     }
-                    eprintln!("[worker:{}] file_hash {}: {}", root.display(), abs.display(), e);
+                    eprintln!(
+                        "[worker:{}] file_hash {}: {}",
+                        root.display(),
+                        abs.display(),
+                        e
+                    );
                     return;
                 }
             };
 
             let meta = std::fs::metadata(abs).ok();
-            let mtime = meta.as_ref()
+            let mtime = meta
+                .as_ref()
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs() as i64);
@@ -647,11 +709,14 @@ fn apply_event(
                                 // v0.7.1: для html (и других dual-indexed языков) дополнительно пишем
                                 // raw-content в text_files — чтобы search_text/grep_text/read_file
                                 // продолжали работать как для обычного text-файла.
-                                let text_for_fts = if crate::indexer::file_types::is_dual_indexed_language(&language) {
-                                    Some(content.as_str())
-                                } else {
-                                    None
-                                };
+                                let text_for_fts =
+                                    if crate::indexer::file_types::is_dual_indexed_language(
+                                        &language,
+                                    ) {
+                                        Some(content.as_str())
+                                    } else {
+                                        None
+                                    };
                                 if let Err(e) = indexer.write_code_to_db(
                                     &rel_path,
                                     &hash,
@@ -665,21 +730,23 @@ fn apply_event(
                                     text_for_fts,
                                     Some(content.as_str()),
                                 ) {
-                                    eprintln!("[worker:{}] write_code {}: {}",
-                                        root.display(), rel_path, e);
+                                    eprintln!(
+                                        "[worker:{}] write_code {}: {}",
+                                        root.display(),
+                                        rel_path,
+                                        e
+                                    );
                                 }
                             }
-                            Err(e) => eprintln!("[worker:{}] parse {}: {}",
-                                root.display(), rel_path, e),
+                            Err(e) => {
+                                eprintln!("[worker:{}] parse {}: {}", root.display(), rel_path, e)
+                            }
                         }
                     }
                 }
                 FileCategory::Text => {
                     // Попробуем XML 1С — если есть BSL-блоки, пишем как код.
-                    let ext = abs
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("");
+                    let ext = abs.extension().and_then(|e| e.to_str()).unwrap_or("");
                     let indexed_as_code = if ext == "xml" {
                         let xml_parser = crate::parser::xml_1c::Xml1CParser;
                         if let Ok(pr) = xml_parser.parse(&content, &rel_path) {
@@ -730,8 +797,7 @@ fn apply_event(
                             mtime,
                             file_size,
                         ) {
-                            eprintln!("[worker:{}] write_text {}: {}",
-                                root.display(), rel_path, e);
+                            eprintln!("[worker:{}] write_text {}: {}", root.display(), rel_path, e);
                         }
                     }
                 }

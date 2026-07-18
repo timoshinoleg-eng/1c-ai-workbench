@@ -54,6 +54,9 @@ jobs:
         shell: pwsh
         run: |
           mypy --install-types --non-interactive tools/skills-bridge/ tools/prompt-gallery/ tools/help-index-mcp/ || true
+      - name: Optional adapters remain fail-closed
+        shell: pwsh
+        run: python scripts/27_validate_optional_adapters.py
 
   rust-build:
     name: Rust build & test (bsl-indexer)
@@ -62,6 +65,9 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -70,9 +76,8 @@ jobs:
           workspaces: tools/code-index-mcp
       - name: cargo clippy
         working-directory: tools/code-index-mcp
-        # Enforce stable correctness/performance categories. Two known 0.42.2
-        # architectural size warnings require API-shape changes and are handled
-        # by the isolated 0.45 upgrade rather than suppressed globally.
+        # Enforce stable correctness/performance categories. Two API-shape size
+        # warnings remain explicitly scoped while correctness/perf stay blocking.
         run: >-
           cargo clippy --all-targets --
           -D clippy::correctness
@@ -83,17 +88,21 @@ jobs:
       - name: cargo test
         working-directory: tools/code-index-mcp
         run: cargo test --all --no-fail-fast
-      # Интеграционные тесты CLI (тяжёлые, marked #[ignore]):
-      # roundtrip index→query на фикстуре. Требует собранного release-бинаря,
-      # кэш rust-cache сохраняет target/ между шагами — cargo переиспользует артефакты.
-      - name: cargo integration test
+      - name: Build release indexer
         if: success()
         working-directory: tools/code-index-mcp
-        run: |
-          cargo build --release -p bsl-indexer
-          cargo test --workspace -- --ignored test_index_then_search_roundtrip
-          cargo test --workspace -- --ignored test_stats_with_fixture
-          cargo test --workspace -- --ignored test_query_with_fixture
+        run: cargo build --release -p bsl-indexer
+      - name: Golden index and incremental parity contract
+        shell: pwsh
+        run: >-
+          python scripts/25_validate_code_index_045.py
+          --report tools/code-index-mcp/target/release/code-index-045-contract.json
+      - name: Provider-free evidence and citation evaluation
+        shell: pwsh
+        run: >-
+          python scripts/26_run_prism_eval.py
+          --json-report tools/code-index-mcp/target/release/prism-1c-eval.json
+          --markdown-report tools/code-index-mcp/target/release/prism-1c-eval.md
       - name: Generate release indexer checksum
         shell: pwsh
         run: |
@@ -108,6 +117,9 @@ jobs:
           path: |
             tools/code-index-mcp/target/release/bsl-indexer.exe
             tools/code-index-mcp/target/release/bsl-indexer.exe.sha256
+            tools/code-index-mcp/target/release/code-index-045-contract.json
+            tools/code-index-mcp/target/release/prism-1c-eval.json
+            tools/code-index-mcp/target/release/prism-1c-eval.md
           if-no-files-found: error
 
   powershell-smoke:

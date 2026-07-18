@@ -165,8 +165,12 @@ fn assemble_profile(
     // запрошенные (рычаг удешевления: ['structure'] вернёт лишь реквизиты/ТЧ).
     let all = sections.is_empty();
     let want = |s: &str| all || sections.iter().any(|x| x == s);
-    let (want_structure, want_forms, want_modules, want_links) =
-        (want("structure"), want("forms"), want("modules"), want("data_links"));
+    let (want_structure, want_forms, want_modules, want_links) = (
+        want("structure"),
+        want("forms"),
+        want("modules"),
+        want("data_links"),
+    );
 
     // ── Заголовок + структура (metadata_objects, singular key) ────────────
     let header = conn.query_row(
@@ -194,9 +198,13 @@ fn assemble_profile(
         // Объект может не иметь записи в metadata_objects (тип вне OBJECT_FOLDERS —
         // например DataProcessor/Report), но формы/модули у него есть. Не выходим —
         // отдаём что найдём, found=false.
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            (false, meta_type.to_string(), name.to_string(), None, Value::Null)
-        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => (
+            false,
+            meta_type.to_string(),
+            name.to_string(),
+            None,
+            Value::Null,
+        ),
         Err(e) => return Err(e),
     };
 
@@ -277,9 +285,15 @@ fn query_forms(conn: &rusqlite::Connection, owner_full_name: &str) -> rusqlite::
 }
 
 /// Модули объекта: тип + UUID (object_id/property_id для dbgs) + путь + расширение.
-fn query_modules(conn: &rusqlite::Connection, full_name_prefix: &str) -> rusqlite::Result<Vec<Value>> {
+fn query_modules(
+    conn: &rusqlite::Connection,
+    full_name_prefix: &str,
+) -> rusqlite::Result<Vec<Value>> {
     // full_name вида 'Documents.X.ManagerModule' — берём по префиксу 'Documents.X.'.
-    let like = format!("{}%", full_name_prefix.replace('%', "\\%").replace('_', "\\_"));
+    let like = format!(
+        "{}%",
+        full_name_prefix.replace('%', "\\%").replace('_', "\\_")
+    );
     let mut stmt = conn.prepare(
         "SELECT module_type, object_id, property_id, config_version, code_path, extension_name \
          FROM metadata_modules WHERE repo = ?1 AND full_name LIKE ?2 ESCAPE '\\' \
@@ -361,7 +375,11 @@ fn query_data_links(conn: &rusqlite::Connection, object: &str) -> rusqlite::Resu
 }
 
 /// Выбрать один текстовый столбец в Vec<String> по запросу с (repo, object).
-fn collect_col(conn: &rusqlite::Connection, sql: &str, object: &str) -> rusqlite::Result<Vec<String>> {
+fn collect_col(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    object: &str,
+) -> rusqlite::Result<Vec<String>> {
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map(params![REPO, object], |r| r.get::<_, String>(0))?;
     let mut out = Vec::new();
@@ -378,7 +396,10 @@ mod tests {
 
     #[test]
     fn folder_mapping_handles_regular_and_irregular() {
-        assert_eq!(meta_type_to_folder("Document").as_deref(), Some("Documents"));
+        assert_eq!(
+            meta_type_to_folder("Document").as_deref(),
+            Some("Documents")
+        );
         assert_eq!(meta_type_to_folder("Catalog").as_deref(), Some("Catalogs"));
         assert_eq!(
             meta_type_to_folder("ChartOfAccounts").as_deref(),
@@ -390,7 +411,10 @@ mod tests {
         );
         // Регулярная эвристика +s для неперечисленного типа.
         assert_eq!(meta_type_to_folder("Report").as_deref(), Some("Reports"));
-        assert_eq!(meta_type_to_folder("SomeNewKind").as_deref(), Some("SomeNewKinds"));
+        assert_eq!(
+            meta_type_to_folder("SomeNewKind").as_deref(),
+            Some("SomeNewKinds")
+        );
         assert_eq!(meta_type_to_folder("").as_deref(), None);
     }
 
@@ -425,12 +449,14 @@ mod tests {
             "INSERT INTO data_links (repo, from_object, from_path, to_object, link_kind) \
              VALUES ('default','Document.Реализация','Контрагент','Catalog.Контрагенты','attr')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO data_links (repo, from_object, from_path, to_object, link_kind) \
              VALUES ('default','Document.Реализация','','AccumulationRegister.Продажи','recorder')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         // forms
         let forms = query_forms(&conn, "Documents.Реализация").unwrap();
@@ -446,24 +472,41 @@ mod tests {
         let dl = query_data_links(&conn, "Document.Реализация").unwrap();
         assert_eq!(dl["out"].as_array().unwrap().len(), 1);
         assert_eq!(dl["out"][0]["to_object"], json!("Catalog.Контрагенты"));
-        assert_eq!(dl["writes_to_registers"][0], json!("AccumulationRegister.Продажи"));
+        assert_eq!(
+            dl["writes_to_registers"][0],
+            json!("AccumulationRegister.Продажи")
+        );
         assert_eq!(dl["incoming_refs_count"], json!(0));
 
         // sections=['structure'] → только structure, без forms/modules/data_links
-        let only = assemble_profile(&conn, "Document.Реализация", "Document", "Реализация",
-            &["structure".to_string()]).unwrap();
+        let only = assemble_profile(
+            &conn,
+            "Document.Реализация",
+            "Document",
+            "Реализация",
+            &["structure".to_string()],
+        )
+        .unwrap();
         let o = only.as_object().unwrap();
         assert!(o.contains_key("structure"), "structure должна быть");
-        assert!(!o.contains_key("forms"), "forms не запрашивалась → ключа нет");
+        assert!(
+            !o.contains_key("forms"),
+            "forms не запрашивалась → ключа нет"
+        );
         assert!(!o.contains_key("modules"));
         assert!(!o.contains_key("data_links"));
         assert_eq!(o["sections_returned"], json!(["structure"]));
 
         // пустой список → все секции, без sections_returned (обратная совместимость)
-        let full = assemble_profile(&conn, "Document.Реализация", "Document", "Реализация", &[]).unwrap();
+        let full =
+            assemble_profile(&conn, "Document.Реализация", "Document", "Реализация", &[]).unwrap();
         let f = full.as_object().unwrap();
-        assert!(f.contains_key("structure") && f.contains_key("forms")
-            && f.contains_key("modules") && f.contains_key("data_links"));
+        assert!(
+            f.contains_key("structure")
+                && f.contains_key("forms")
+                && f.contains_key("modules")
+                && f.contains_key("data_links")
+        );
         assert!(!f.contains_key("sections_returned"));
     }
 }

@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param(
   [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
-  [string]$ReleaseTag = "v0.9.0-pilot",
+  [string]$ReleaseTag = "",
+  [string]$IndexerSha256 = "",
   [switch]$RecreateVenv,
   [switch]$SkipBinaryDownload,
   [switch]$Offline,
@@ -19,8 +20,7 @@ $productionLock = Join-Path $root "requirements-production.lock"
 if ([string]::IsNullOrWhiteSpace($Wheelhouse)) {
   $Wheelhouse = Join-Path $root "offline-wheelhouse"
 }
-$expectedIndexerSha256 = "f4a0f19d5ff0947c5e1aaeccf674100aadd38bcf8d17c5085faee25c2b822fa5"
-$indexerUrl = "https://github.com/timoshinoleg-eng/1c-ai-workbench/releases/download/$ReleaseTag/bsl-indexer.exe"
+$expectedIndexerVersion = "code-index 0.45.0"
 
 function Write-Step([string]$Message) { Write-Host "  [INFO] $Message" }
 function Write-Ok([string]$Message) { Write-Host "  [OK] $Message" }
@@ -117,14 +117,20 @@ function Ensure-BslIndexer {
   New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
   if (Test-Path -LiteralPath $binaryPath) {
-    $existingHash = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($existingHash -eq $expectedIndexerSha256) {
-      Write-Ok "bsl-indexer.exe already present: $binaryPath"
+    $existingVersion = (& $binaryPath --version 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $existingVersion -eq $expectedIndexerVersion) {
+      Write-Ok "bsl-indexer.exe $existingVersion already present: $binaryPath"
       return
     }
-    Write-Step "Existing bsl-indexer.exe hash mismatch; refreshing from $ReleaseTag."
+    Write-Step "Existing bsl-indexer.exe version mismatch ($existingVersion); a pinned release artifact is required."
   }
 
+  if ([string]::IsNullOrWhiteSpace($ReleaseTag) -or $IndexerSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+    throw "No verified code-index 0.45.0 release pin is configured. Use the bundled installer, pass -ReleaseTag and -IndexerSha256 for an approved release, or build from source."
+  }
+
+  $indexerUrl = "https://github.com/timoshinoleg-eng/1c-ai-workbench/releases/download/$ReleaseTag/bsl-indexer.exe"
+  $expectedIndexerSha256 = $IndexerSha256.ToLowerInvariant()
   $tmpFile = Join-Path $env:TEMP ("bsl-indexer-{0}.exe" -f ([guid]::NewGuid().ToString("N")))
   try {
     Write-Step "Downloading bsl-indexer.exe from $ReleaseTag"
@@ -132,6 +138,10 @@ function Ensure-BslIndexer {
     $downloadHash = (Get-FileHash -LiteralPath $tmpFile -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($downloadHash -ne $expectedIndexerSha256) {
       throw "bsl-indexer.exe SHA256 mismatch. Expected $expectedIndexerSha256, got $downloadHash."
+    }
+    $downloadVersion = (& $tmpFile --version 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $downloadVersion -ne $expectedIndexerVersion) {
+      throw "Downloaded bsl-indexer version mismatch. Expected '$expectedIndexerVersion', got '$downloadVersion'. Update the release tag and checksum pin before using this artifact."
     }
     Move-Item -LiteralPath $tmpFile -Destination $binaryPath -Force
     Write-Ok "bsl-indexer.exe downloaded and verified: $binaryPath"

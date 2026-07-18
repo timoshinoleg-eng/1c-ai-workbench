@@ -141,9 +141,8 @@ pub fn write_language_back(
     }
 
     if updated {
-        fs::write(daemon_toml_path, doc.to_string()).with_context(|| {
-            format!("Не удалось записать {}", daemon_toml_path.display())
-        })?;
+        fs::write(daemon_toml_path, doc.to_string())
+            .with_context(|| format!("Не удалось записать {}", daemon_toml_path.display()))?;
     }
     Ok(updated)
 }
@@ -242,8 +241,7 @@ path = "/srv/repos/foo"
             .write_all(original.as_bytes())
             .unwrap();
 
-        let updated =
-            write_language_back(&toml_path, Path::new("/srv/repos/ut"), "bsl").unwrap();
+        let updated = write_language_back(&toml_path, Path::new("/srv/repos/ut"), "bsl").unwrap();
         assert!(updated);
 
         let new_text = std::fs::read_to_string(&toml_path).unwrap();

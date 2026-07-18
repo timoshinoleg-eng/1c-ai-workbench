@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "suite": "prism-1c-provider-free",
+  "network_required": false,
+  "provider_credentials_required": false,
+  "cases": [
+    {
+      "id": "symbol-navigation",
+      "kind": "symbol",
+      "query": "РассчитатьСумму",
+      "expected_symbol": "РассчитатьСумму",
+      "citation": {
+        "path": "CommonModules/ПилотИндекса/Ext/Module.bsl",
+        "line_start": 2,
+        "line_end": 4,
+        "must_contain": "РассчитатьСумму"
+      }
+    },
+    {
+      "id": "body-evidence",
+      "kind": "body",
+      "query": "ВыполнитьПроверку",
+      "expected_symbol": "ВыполнитьПроверку",
+      "body_must_contain": "Значения.Добавить(Результат)",
+      "citation": {
+        "path": "CommonModules/ПилотИндекса/Ext/Module.bsl",
+        "line_start": 6,
+        "line_end": 10,
+        "must_contain": "Значения.Добавить"
+      }
+    },
+    {
+      "id": "call-graph",
+      "kind": "call_graph",
+      "caller": "ВыполнитьПроверку",
+      "callee": "РассчитатьСумму",
+      "citation": {
+        "path": "CommonModules/ПилотИндекса/Ext/Module.bsl",
+        "line_start": 7,
+        "line_end": 7,
+        "must_contain": "РассчитатьСумму"
+      }
+    },
+    {
+      "id": "metadata-manifest",
+      "kind": "manifest",
+      "full_name": "CommonModule.ПилотИндекса",
+      "config_version": "golden-v1",
+      "citation": {
+        "path": "ConfigDumpInfo.xml",
+        "line_start": 4,
+        "line_end": 6,
+        "must_contain": "golden-v1"
+      }
+    }
+  ]
+}

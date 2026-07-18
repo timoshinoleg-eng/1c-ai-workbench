@@ -104,8 +104,7 @@ pub fn create_watcher(
                     let is_excluded = rel.components().any(|c| {
                         let s = c.as_os_str().to_string_lossy();
                         exclude_dirs.contains(&s.to_string())
-                            || crate::indexer::file_types::EXCLUDE_DIRS
-                                .contains(&s.as_ref())
+                            || crate::indexer::file_types::EXCLUDE_DIRS.contains(&s.as_ref())
                     });
                     if is_excluded {
                         continue;

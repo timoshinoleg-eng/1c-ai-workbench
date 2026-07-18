@@ -187,7 +187,17 @@ async fn handle_get_call_tree(
         Ok(e) => e,
         Err(r) => return r,
     };
-    ok_json(tools::get_call_tree(entry, p.root, p.direction, p.max_depth, p.max_nodes, p.language).await)
+    ok_json(
+        tools::get_call_tree(
+            entry,
+            p.root,
+            p.direction,
+            p.max_depth,
+            p.max_nodes,
+            p.language,
+        )
+        .await,
+    )
 }
 
 async fn handle_find_symbol(
@@ -355,15 +365,14 @@ async fn handle_grep_text(
         Err(r) => return r,
     };
     // `query` — алиас для `regex` (см. GrepTextParams).
-    let regex = match p.regex.clone().or_else(|| p.query.clone()) {
-        Some(r) if !r.trim().is_empty() => r,
-        _ => {
-            return ok_json(
+    let regex =
+        match p.regex.clone().or_else(|| p.query.clone()) {
+            Some(r) if !r.trim().is_empty() => r,
+            _ => return ok_json(
                 "{\"error\": \"grep_text: укажите regex= (синтаксис crate regex), не query=.\"}"
                     .to_string(),
-            )
-        }
-    };
+            ),
+        };
     ok_json(
         tools::grep_text(
             entry,
@@ -386,15 +395,14 @@ async fn handle_grep_code(
         Err(r) => return r,
     };
     // `query` — алиас для `regex` (см. GrepCodeParams).
-    let regex = match p.regex.clone().or_else(|| p.query.clone()) {
-        Some(r) if !r.trim().is_empty() => r,
-        _ => {
-            return ok_json(
+    let regex =
+        match p.regex.clone().or_else(|| p.query.clone()) {
+            Some(r) if !r.trim().is_empty() => r,
+            _ => return ok_json(
                 "{\"error\": \"grep_code: укажите regex= (синтаксис crate regex), не query=.\"}"
                     .to_string(),
-            )
-        }
-    };
+            ),
+        };
     ok_json(
         tools::grep_code(
             entry,

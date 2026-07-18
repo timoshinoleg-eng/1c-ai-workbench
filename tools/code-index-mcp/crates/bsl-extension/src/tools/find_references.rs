@@ -321,9 +321,17 @@ mod tests {
 
         // Вызов с lowercase-ключом (как делает execute: object.to_lowercase()).
         let dr = query_data_refs(&conn, "document.заказклиента", 20).unwrap();
-        assert_eq!(dr["total"], json!(1), "data_refs должен найти по lower-ключу");
+        assert_eq!(
+            dr["total"],
+            json!(1),
+            "data_refs должен найти по lower-ключу"
+        );
         let rr = query_role_rights(&conn, "document.заказклиента", 20).unwrap();
-        assert_eq!(rr["total"], json!(1), "role_rights должен найти по lower-ключу");
+        assert_eq!(
+            rr["total"],
+            json!(1),
+            "role_rights должен найти по lower-ключу"
+        );
 
         // Несуществующий ключ — пусто (sanity).
         let none = query_data_refs(&conn, "document.нетакого", 20).unwrap();

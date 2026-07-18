@@ -76,6 +76,13 @@ jobs:
           if (-not (Test-Path $exe)) { throw 'bsl-indexer.exe missing after build' }
           & $exe --help | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe smoke failed: $LASTEXITCODE" }
+          python ..\..\scripts\25_validate_code_index_045.py `
+            --binary $exe `
+            --report 'target\release\code-index-045-contract.json'
+          python ..\..\scripts\26_run_prism_eval.py `
+            --binary $exe `
+            --json-report 'target\release\prism-1c-eval.json' `
+            --markdown-report 'target\release\prism-1c-eval.md'
           $sum = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sum  bsl-indexer.exe" | Set-Content -Encoding ascii 'target\release\bsl-indexer.exe.sha256'
 
@@ -150,6 +157,9 @@ jobs:
           gh release create $tag `
             ".\tools\code-index-mcp\target\release\bsl-indexer.exe" `
             ".\tools\code-index-mcp\target\release\bsl-indexer.exe.sha256" `
+            ".\tools\code-index-mcp\target\release\code-index-045-contract.json" `
+            ".\tools\code-index-mcp\target\release\prism-1c-eval.json" `
+            ".\tools\code-index-mcp\target\release\prism-1c-eval.md" `
             ".\dist\installer\1c-ai-workbench-setup-$version.exe" `
             ".\dist\installer\1c-ai-workbench-setup-$version.exe.sha256" `
             --verify-tag --generate-notes --title "1C AI Workbench $tag"

@@ -10,6 +10,58 @@
 // `LanguageProcessor::schema_extensions()` при первом открытии БД
 // репозитория с `language = "bsl"`.
 
+/// DDL таблицы `metadata_modules` — отдельной константой, потому что
+/// используется и в SCHEMA_EXTENSIONS, и в миграции `index_metadata_modules`
+/// (пересоздание таблицы при старом UNIQUE-ключе без extension_name).
+pub const METADATA_MODULES_DDL: &str = "
+    CREATE TABLE IF NOT EXISTS metadata_modules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        repo TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        object_name TEXT NOT NULL,
+        module_type TEXT NOT NULL,
+        object_id TEXT NOT NULL,
+        property_id TEXT NOT NULL,
+        config_version TEXT,
+        code_path TEXT,
+        extension_name TEXT,
+        UNIQUE(repo, full_name, extension_name)
+    );
+    ";
+
+/// Индексы `metadata_modules` — тоже переиспользуются миграцией.
+pub const METADATA_MODULES_INDEXES: &[&str] = &[
+    "CREATE INDEX IF NOT EXISTS idx_mm_repo ON metadata_modules(repo);",
+    "CREATE INDEX IF NOT EXISTS idx_mm_object_name ON metadata_modules(repo, object_name);",
+    "CREATE INDEX IF NOT EXISTS idx_mm_module_type ON metadata_modules(repo, module_type);",
+    "CREATE INDEX IF NOT EXISTS idx_mm_object_id ON metadata_modules(object_id);",
+    "CREATE INDEX IF NOT EXISTS idx_mm_extension ON metadata_modules(repo, extension_name);",
+];
+
+/// DDL трёх FTS-триггеров `procedure_enrichment` (INSERT/DELETE/UPDATE) —
+/// отдельной константой, потому что переиспользуется и в SCHEMA_EXTENSIONS,
+/// и в bulk-пересборке термов (`build_procedure_terms_from_staging`), где
+/// триггеры снимаются на время массовой вставки и ставятся обратно.
+pub const PE_FTS_TRIGGERS_DDL: &str = "
+    CREATE TRIGGER IF NOT EXISTS pe_fts_insert
+    AFTER INSERT ON procedure_enrichment BEGIN
+        INSERT INTO fts_procedure_enrichment(rowid, terms)
+        VALUES (new.id, new.terms);
+    END;
+    CREATE TRIGGER IF NOT EXISTS pe_fts_delete
+    AFTER DELETE ON procedure_enrichment BEGIN
+        INSERT INTO fts_procedure_enrichment(fts_procedure_enrichment, rowid, terms)
+        VALUES ('delete', old.id, old.terms);
+    END;
+    CREATE TRIGGER IF NOT EXISTS pe_fts_update
+    AFTER UPDATE ON procedure_enrichment BEGIN
+        INSERT INTO fts_procedure_enrichment(fts_procedure_enrichment, rowid, terms)
+        VALUES ('delete', old.id, old.terms);
+        INSERT INTO fts_procedure_enrichment(rowid, terms)
+        VALUES (new.id, new.terms);
+    END;
+    ";
+
 /// CREATE TABLE / INDEX для специфичных 1С-таблиц.
 /// Идемпотентно — все CREATE через IF NOT EXISTS.
 pub const SCHEMA_EXTENSIONS: &[&str] = &[
@@ -31,12 +83,45 @@ pub const SCHEMA_EXTENSIONS: &[&str] = &[
         name TEXT NOT NULL,
         synonym TEXT,
         attributes_json TEXT,
+        -- Владелец объекта в multi-config выгрузке: '' — базовая конфигурация
+        -- (или объект расширения с ObjectBelonging=Adopted, т.е. заимствованный
+        -- из базовой); 'Extensions/<EF_X>' — собственный (Native) объект
+        -- расширения. Нужен для diff-удаления перечня по владельцу, когда
+        -- Configuration.xml перестаёт быть триггером полного пересбора.
+        sub_config TEXT NOT NULL DEFAULT '',
         UNIQUE(repo, full_name)
     );
     ",
     "CREATE INDEX IF NOT EXISTS idx_metadata_objects_repo ON metadata_objects(repo);",
     "CREATE INDEX IF NOT EXISTS idx_metadata_objects_meta_type ON metadata_objects(repo, meta_type);",
     "CREATE INDEX IF NOT EXISTS idx_metadata_objects_name ON metadata_objects(name);",
+
+    // ── config_manifest ───────────────────────────────────────────────────
+    // Плоский реестр строк ConfigDumpInfo.xml всех областей выгрузки (base +
+    // каждое расширение). Одна строка = один элемент описи одной области:
+    // объект (`Catalog.Контрагенты`, с configVersion), модуль
+    // (`CommonModule.X.Module`, с configVersion) или структурный под-элемент
+    // (`...Attribute.Основной` / `...TabularSection.Товары` / `...EnumValue.X`,
+    // у которых своего configVersion в описи НЕТ → пустая строка).
+    //
+    // `area` — та же кодировка, что `metadata_objects.sub_config`: '' —
+    // базовая конфигурация; 'extensions/<имя>' — область расширения. Один
+    // заимствованный объект попадает сюда дважды: строкой area='' (дом-база)
+    // и строкой area='extensions/<имя>' (заимствователь). Это НЕ дубль —
+    // каждая строка отдельный факт «в такой-то области объект числится».
+    //
+    // Наполняется при полной индексации (`index_config_manifest`); источник
+    // истины для diff-сверки Фазы 2 без опоры на порядок watcher-событий.
+    "
+    CREATE TABLE IF NOT EXISTS config_manifest (
+        repo TEXT NOT NULL,
+        area TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        config_version TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (repo, area, full_name)
+    ) WITHOUT ROWID;
+    ",
+    "CREATE INDEX IF NOT EXISTS idx_config_manifest_full_name ON config_manifest(repo, full_name);",
 
     // ── metadata_forms ────────────────────────────────────────────────────
     // Управляемая форма объекта конфигурации. `owner_full_name` —
@@ -157,26 +242,12 @@ pub const SCHEMA_EXTENSIONS: &[&str] = &[
     // `(repo, full_name)` уникален; `full_name` имеет вид
     // `<MetaType>.<Name>.<ModuleType>`, например
     // `Document.РеализацияТоваровУслуг.ManagerModule`.
-    "
-    CREATE TABLE IF NOT EXISTS metadata_modules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        repo TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        object_name TEXT NOT NULL,
-        module_type TEXT NOT NULL,
-        object_id TEXT NOT NULL,
-        property_id TEXT NOT NULL,
-        config_version TEXT,
-        code_path TEXT,
-        extension_name TEXT,
-        UNIQUE(repo, full_name)
-    );
-    ",
-    "CREATE INDEX IF NOT EXISTS idx_mm_repo ON metadata_modules(repo);",
-    "CREATE INDEX IF NOT EXISTS idx_mm_object_name ON metadata_modules(repo, object_name);",
-    "CREATE INDEX IF NOT EXISTS idx_mm_module_type ON metadata_modules(repo, module_type);",
-    "CREATE INDEX IF NOT EXISTS idx_mm_object_id ON metadata_modules(object_id);",
-    "CREATE INDEX IF NOT EXISTS idx_mm_extension ON metadata_modules(repo, extension_name);",
+    METADATA_MODULES_DDL,
+    METADATA_MODULES_INDEXES[0],
+    METADATA_MODULES_INDEXES[1],
+    METADATA_MODULES_INDEXES[2],
+    METADATA_MODULES_INDEXES[3],
+    METADATA_MODULES_INDEXES[4],
 
     // ── procedure_enrichment ──────────────────────────────────────────────
     // LLM-обогащение процедур бизнес-терминами (этап 5a).
@@ -241,32 +312,10 @@ pub const SCHEMA_EXTENSIONS: &[&str] = &[
     );
     ",
 
-    // Триггеры синхронизации FTS при INSERT/DELETE/UPDATE.
-    // Аналог core::TRIGGERS_SQL для functions/classes — те же 3 события,
-    // явное удаление-перед-вставкой при UPDATE.
-    "
-    CREATE TRIGGER IF NOT EXISTS pe_fts_insert
-    AFTER INSERT ON procedure_enrichment BEGIN
-        INSERT INTO fts_procedure_enrichment(rowid, terms)
-        VALUES (new.id, new.terms);
-    END;
-    ",
-    "
-    CREATE TRIGGER IF NOT EXISTS pe_fts_delete
-    AFTER DELETE ON procedure_enrichment BEGIN
-        INSERT INTO fts_procedure_enrichment(fts_procedure_enrichment, rowid, terms)
-        VALUES ('delete', old.id, old.terms);
-    END;
-    ",
-    "
-    CREATE TRIGGER IF NOT EXISTS pe_fts_update
-    AFTER UPDATE ON procedure_enrichment BEGIN
-        INSERT INTO fts_procedure_enrichment(fts_procedure_enrichment, rowid, terms)
-        VALUES ('delete', old.id, old.terms);
-        INSERT INTO fts_procedure_enrichment(rowid, terms)
-        VALUES (new.id, new.terms);
-    END;
-    ",
+    // Триггеры синхронизации FTS при INSERT/DELETE/UPDATE — единым DDL
+    // PE_FTS_TRIGGERS_DDL (переиспользуется bulk-пересборкой термов, где
+    // триггеры снимаются на время массовой вставки и ставятся обратно).
+    PE_FTS_TRIGGERS_DDL,
 
     // ── embedding_meta ────────────────────────────────────────────────────
     // Глобальная (не per-repo) служебная таблица «ключ-значение» для
@@ -462,8 +511,25 @@ pub const SCHEMA_EXTENSIONS: &[&str] = &[
 /// `apply_schema_extensions`. Вызывать ДО применения `SCHEMA_EXTENSIONS`.
 /// Безопасно на свежей БД (таблиц ещё нет — ALTER пропускается) и при повторе.
 pub fn migrate_extensions(conn: &rusqlite::Connection) -> anyhow::Result<()> {
-    ensure_column(conn, "data_links", "to_object_key", "TEXT NOT NULL DEFAULT ''")?;
-    ensure_column(conn, "role_rights", "object_name_key", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(
+        conn,
+        "data_links",
+        "to_object_key",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "role_rights",
+        "object_name_key",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    // Владелец объекта (base '' / Extensions/<EF_X>) для diff-удаления перечня.
+    ensure_column(
+        conn,
+        "metadata_objects",
+        "sub_config",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
     ensure_trigram_tokenizer(conn)?;
     Ok(())
 }
@@ -591,6 +657,64 @@ mod tests {
     }
 
     #[test]
+    fn migrate_extensions_adds_sub_config_column() {
+        // Симуляция БД от бинарника до внедрения sub_config: metadata_objects
+        // без колонки sub_config. migrate_extensions обязан её добавить (ALTER),
+        // а последующий DDL-батч SCHEMA_EXTENSIONS — не падать.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE metadata_objects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo TEXT NOT NULL, full_name TEXT NOT NULL,
+                meta_type TEXT NOT NULL, name TEXT NOT NULL,
+                synonym TEXT, attributes_json TEXT,
+                UNIQUE(repo, full_name));",
+        )
+        .unwrap();
+        assert!(!column_exists(&conn, "metadata_objects", "sub_config"));
+
+        super::migrate_extensions(&conn).unwrap();
+        for ddl in SCHEMA_EXTENSIONS {
+            conn.execute_batch(ddl)
+                .expect("DDL после migrate_extensions не должен падать");
+        }
+        assert!(column_exists(&conn, "metadata_objects", "sub_config"));
+
+        // Дефолт '' — существующие строки получают пустого владельца (база).
+        conn.execute(
+            "INSERT INTO metadata_objects (repo, full_name, meta_type, name) \
+             VALUES ('ut', 'Catalog.Контрагенты', 'Catalog', 'Контрагенты')",
+            [],
+        )
+        .unwrap();
+        let owner: String = conn
+            .query_row(
+                "SELECT sub_config FROM metadata_objects WHERE full_name = 'Catalog.Контрагенты'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            owner, "",
+            "новая строка без sub_config → владелец база ('')"
+        );
+
+        // Идемпотентность: повтор миграции — no-op, не падает.
+        super::migrate_extensions(&conn).unwrap();
+    }
+
+    #[test]
+    fn fresh_schema_has_sub_config_column() {
+        // Свежая БД: колонку создаёт сразу CREATE TABLE из SCHEMA_EXTENSIONS,
+        // без ALTER.
+        let conn = Connection::open_in_memory().unwrap();
+        for ddl in SCHEMA_EXTENSIONS {
+            conn.execute_batch(ddl).unwrap();
+        }
+        assert!(column_exists(&conn, "metadata_objects", "sub_config"));
+    }
+
+    #[test]
     fn schema_extensions_apply_cleanly() {
         let conn = Connection::open_in_memory().unwrap();
         for ddl in SCHEMA_EXTENSIONS {
@@ -598,7 +722,8 @@ mod tests {
         }
         // Идемпотентность — повторный execute не должен валиться.
         for ddl in SCHEMA_EXTENSIONS {
-            conn.execute_batch(ddl).expect("DDL должен быть идемпотентным");
+            conn.execute_batch(ddl)
+                .expect("DDL должен быть идемпотентным");
         }
     }
 
@@ -612,21 +737,36 @@ mod tests {
         conn.execute(
             "INSERT INTO proc_call_graph (repo, caller_proc_key, callee_proc_name, call_type) \
              VALUES (?, ?, ?, ?)",
-            rusqlite::params!["ut", "ОбщегоНазначенияСервер.Старт", "Логирование.Записать", "direct"],
+            rusqlite::params![
+                "ut",
+                "ОбщегоНазначенияСервер.Старт",
+                "Логирование.Записать",
+                "direct"
+            ],
         )
         .unwrap();
         // Повтор — должен сломаться по UNIQUE(repo, caller, callee_name, call_type).
         let dup = conn.execute(
             "INSERT INTO proc_call_graph (repo, caller_proc_key, callee_proc_name, call_type) \
              VALUES (?, ?, ?, ?)",
-            rusqlite::params!["ut", "ОбщегоНазначенияСервер.Старт", "Логирование.Записать", "direct"],
+            rusqlite::params![
+                "ut",
+                "ОбщегоНазначенияСервер.Старт",
+                "Логирование.Записать",
+                "direct"
+            ],
         );
         assert!(dup.is_err());
         // А вот другой call_type на ту же пару — допустим (нет конфликта).
         conn.execute(
             "INSERT INTO proc_call_graph (repo, caller_proc_key, callee_proc_name, call_type) \
              VALUES (?, ?, ?, ?)",
-            rusqlite::params!["ut", "ОбщегоНазначенияСервер.Старт", "Логирование.Записать", "subscription"],
+            rusqlite::params![
+                "ut",
+                "ОбщегоНазначенияСервер.Старт",
+                "Логирование.Записать",
+                "subscription"
+            ],
         )
         .unwrap();
     }
@@ -661,7 +801,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 1, "FTS должна найти запись после insert через триггер");
+        assert_eq!(
+            count, 1,
+            "FTS должна найти запись после insert через триггер"
+        );
 
         // Совместный JOIN — типичный запрос tool'а search_terms.
         let row: (String, String, String) = conn
@@ -707,7 +850,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(old_hits, 0, "старое значение FTS должна удалить через триггер update");
+        assert_eq!(
+            old_hits, 0,
+            "старое значение FTS должна удалить через триггер update"
+        );
         let new_hits: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM fts_procedure_enrichment WHERE terms MATCH 'обновлено'",
@@ -759,7 +905,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(ddl.contains("trigram"), "после миграции токенайзер trigram: {ddl}");
+        assert!(
+            ddl.contains("trigram"),
+            "после миграции токенайзер trigram: {ddl}"
+        );
         // Substring и словоформа находятся; индекс пересобран из content-таблицы.
         for q in ["трихкод", "штрихкоду", "УТОЧНИТЬ"] {
             let hits: i64 = conn

@@ -35,7 +35,7 @@ The useful uncommitted files from `C:\FINAL_TEST_1C_FINAL` were migrated before 
 
 #### code-index-mcp 0.45.0
 
-- Current workbench binary: 0.42.2.
+- Comparison baseline: 0.42.2; accepted branch candidate: 0.45.0.
 - Upstream delta: 29 commits and 36 files from the recorded vendor SHA.
 - Important changes: tree-sitter BSL parser migration, bulk-index performance fixes, configuration-manifest reconciliation, and optional Docker/read-only HTTP deployment.
 - Decision: highest-value core upgrade, but the parser change is breaking and requires golden-index comparison before merge.
@@ -73,6 +73,10 @@ The useful uncommitted files from `C:\FINAL_TEST_1C_FINAL` were migrated before 
 - Decision: external integration profile only. Default workbench artifacts must not enable write mode, store credentials, or claim live-base safety without a separate review.
 - Source: <https://github.com/evilbruce666/1c-odata-mcp>.
 
+The external candidates above are now covered by the fail-closed catalog in
+`configs/optional-adapters.json`. They remain disabled, unbundled, credential-
+isolated, rootless, and read-only until their separate activation gates pass.
+
 #### mcp-1c 1.11.2
 
 - MIT free core, active releases, compact Go binary.
@@ -108,6 +112,9 @@ Acceptance:
 
 ### Phase 1 — code-index-mcp 0.45.0
 
+Status: completed on 2026-07-18. The accepted evidence and intentional parser
+deltas are recorded in [CODE_INDEX_045_PILOT.md](CODE_INDEX_045_PILOT.md).
+
 1. Sync the vendor in a separate branch while retaining attribution and local patch boundaries.
 2. Rebuild `bsl-indexer.exe` from the pinned upstream commit.
 3. Index the same 350-file dump with 0.42.2 and 0.45.0.
@@ -123,6 +130,10 @@ Acceptance:
 
 ### Phase 2 — reproducible evaluation
 
+Status: completed on 2026-07-18. The provider-free suite scores 4/4 and records
+source-backed evidence in JSON and Markdown; see
+[PRISM_LIKE_EVALUATION.md](PRISM_LIKE_EVALUATION.md).
+
 1. Add provider-free fixtures for metadata navigation, call-graph evidence, and answer citation quality.
 2. Record deterministic JSON results and a human-readable summary.
 3. Add an optional provider evaluation profile with an explicit budget and no default network calls.
@@ -134,6 +145,10 @@ Acceptance:
 - results include evidence paths and cannot pass on empty output.
 
 ### Phase 3 — optional integrations
+
+Status: fail-closed adapter contract completed on 2026-07-18; live pilots remain
+outside production until disposable MXL/OData environments are supplied. See
+[OPTIONAL_ADAPTERS.md](OPTIONAL_ADAPTERS.md).
 
 1. Define a common external-pack contract: disabled by default, separate install instructions, explicit data boundary, smoke command, license, and removal path.
 2. Pilot the MXL merge tool without global Git mutations.

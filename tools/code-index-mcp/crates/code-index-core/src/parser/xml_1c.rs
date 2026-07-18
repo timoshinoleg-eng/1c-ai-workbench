@@ -2,8 +2,8 @@
 /// Использует событийный (SAX-подобный) парсинг через quick-xml
 /// без tree-sitter — XML-грамматика не нужна, структура предсказуема.
 use anyhow::Result;
-use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::Reader;
 
 use super::types::{sha256_hex, ParseResult, ParsedClass, ParsedVariable};
 use super::LanguageParser;
@@ -430,8 +430,10 @@ mod tests {
 
         // Объект метаданных
         assert!(
-            result.classes.iter().any(|c| c.name == "Контрагенты"
-                && c.bases == Some("Catalog".to_string())),
+            result
+                .classes
+                .iter()
+                .any(|c| c.name == "Контрагенты" && c.bases == Some("Catalog".to_string())),
             "Должен быть класс Контрагенты с базой Catalog, найдено: {:?}",
             result.classes
         );
@@ -450,7 +452,10 @@ mod tests {
 
         // Табличная часть
         assert!(
-            result.classes.iter().any(|c| c.name.contains("КонтактнаяИнформация")),
+            result
+                .classes
+                .iter()
+                .any(|c| c.name.contains("КонтактнаяИнформация")),
             "Должна быть табличная часть КонтактнаяИнформация, найдено: {:?}",
             result.classes
         );
@@ -461,8 +466,14 @@ mod tests {
         let source = r#"<?xml version="1.0"?><root><item>test</item></root>"#;
         let parser = Xml1CParser;
         let result = parser.parse(source, "test.xml").unwrap();
-        assert!(result.classes.is_empty(), "Обычный XML должен дать пустые классы");
-        assert!(result.variables.is_empty(), "Обычный XML должен дать пустые переменные");
+        assert!(
+            result.classes.is_empty(),
+            "Обычный XML должен дать пустые классы"
+        );
+        assert!(
+            result.variables.is_empty(),
+            "Обычный XML должен дать пустые переменные"
+        );
     }
 
     #[test]
@@ -481,10 +492,14 @@ mod tests {
     </Document>
 </MetaDataObject>"#;
         let parser = Xml1CParser;
-        let result = parser.parse(source, "Documents/РеализацияТоваров.xml").unwrap();
+        let result = parser
+            .parse(source, "Documents/РеализацияТоваров.xml")
+            .unwrap();
         assert!(
-            result.classes.iter().any(|c| c.name == "РеализацияТоваров"
-                && c.bases == Some("Document".to_string())),
+            result
+                .classes
+                .iter()
+                .any(|c| c.name == "РеализацияТоваров" && c.bases == Some("Document".to_string())),
             "Должен быть класс РеализацияТоваров с базой Document"
         );
         assert!(
@@ -512,10 +527,15 @@ mod tests {
     </InformationRegister>
 </MetaDataObject>"#;
         let parser = Xml1CParser;
-        let result = parser.parse(source, "InformationRegisters/КурсыВалют.xml").unwrap();
+        let result = parser
+            .parse(source, "InformationRegisters/КурсыВалют.xml")
+            .unwrap();
         assert!(
-            result.classes.iter().any(|c| c.name == "КурсыВалют"
-                && c.bases == Some("InformationRegister".to_string())),
+            result
+                .classes
+                .iter()
+                .any(|c| c.name == "КурсыВалют"
+                    && c.bases == Some("InformationRegister".to_string())),
             "Должен быть класс КурсыВалют с базой InformationRegister"
         );
         assert!(result.variables.iter().any(|v| v.name == "Курс"));
@@ -533,10 +553,13 @@ mod tests {
     </CommonModule>
 </MetaDataObject>"#;
         let parser = Xml1CParser;
-        let result = parser.parse(source, "CommonModules/ОбщегоНазначения.xml").unwrap();
+        let result = parser
+            .parse(source, "CommonModules/ОбщегоНазначения.xml")
+            .unwrap();
         assert!(
-            result.classes.iter().any(|c| c.name == "ОбщегоНазначения"
-                && c.bases == Some("CommonModule".to_string())),
+            result.classes.iter().any(
+                |c| c.name == "ОбщегоНазначения" && c.bases == Some("CommonModule".to_string())
+            ),
             "Должен быть класс ОбщегоНазначения с базой CommonModule"
         );
     }
@@ -568,10 +591,15 @@ mod tests {
     </Document>
 </MetaDataObject>"#;
         let parser = Xml1CParser;
-        let result = parser.parse(source, "Documents/ПоступлениеТоваров.xml").unwrap();
+        let result = parser
+            .parse(source, "Documents/ПоступлениеТоваров.xml")
+            .unwrap();
 
         // Документ
-        assert!(result.classes.iter().any(|c| c.name == "ПоступлениеТоваров"));
+        assert!(result
+            .classes
+            .iter()
+            .any(|c| c.name == "ПоступлениеТоваров"));
         // Табличная часть
         assert!(result.classes.iter().any(|c| c.name.contains("Товары")));
         // Реквизиты табличной части

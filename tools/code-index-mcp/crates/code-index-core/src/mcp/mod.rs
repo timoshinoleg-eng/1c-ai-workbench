@@ -23,10 +23,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::extension::{IndexTool, ProcessorRegistry};
-use crate::serve_cache::ServeCache;
-use crate::serve_dedup::SessionDedup;
 use crate::federation::client::RemoteClientPool;
 use crate::federation::repos::FederatedRepo;
+use crate::serve_cache::ServeCache;
+use crate::serve_dedup::SessionDedup;
 use crate::storage::{PoolConfig, Storage, StoragePool};
 
 pub mod cap;
@@ -74,7 +74,10 @@ impl RepoEntry {
     /// диспатчера: tools::* не должны вызываться для remote).
     pub fn local_root(&self) -> &Path {
         self.root_path.as_ref().unwrap_or_else(|| {
-            panic!("local_root() вызван для remote-репо ip={} — это баг диспатчера", self.ip)
+            panic!(
+                "local_root() вызван для remote-репо ip={} — это баг диспатчера",
+                self.ip
+            )
         })
     }
 
@@ -97,7 +100,8 @@ impl RepoEntry {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SearchParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     pub query: String,
     pub limit: Option<usize>,
@@ -109,7 +113,8 @@ pub struct SearchParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct NameParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Точное имя символа. Запасные имена на входе (модели путают ключ):
     /// `symbol`, `query` принимаются как `name` — иначе слепой вызов падал
@@ -127,7 +132,8 @@ pub struct NameParams {
 /// одиночный NameParams.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MultiNameParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Имя ОДНОГО символа. Для нескольких — `names`.
     pub name: Option<String>,
@@ -141,8 +147,14 @@ pub struct MultiNameParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionNameParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
+    /// Точное имя функции. Запасные ключи на входе (модели путают параметр
+    /// с get_function): `name`, `symbol` принимаются как `function_name` —
+    /// иначе слепой вызов get_callers/get_callees падал тёмной ошибкой
+    /// разборщика «missing field function_name» (потерянный ход).
+    #[serde(alias = "name", alias = "symbol")]
     pub function_name: String,
     pub language: Option<String>,
     /// Cap на число рёбер графа вызовов (default 200). При обрезке в ответе —
@@ -152,7 +164,8 @@ pub struct FunctionNameParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FindPathParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Имя функции-источника (caller) — начало пути.
     pub from: String,
@@ -166,7 +179,8 @@ pub struct FindPathParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CallTreeParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Имя функции-корня дерева.
     pub root: String,
@@ -183,7 +197,8 @@ pub struct CallTreeParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ImportParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     pub file_id: Option<i64>,
     pub module: Option<String>,
@@ -194,14 +209,16 @@ pub struct ImportParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FilePathParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     pub path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GrepBodyParams {
-    /// Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Подстрока (LIKE).
     pub pattern: Option<String>,
@@ -230,12 +247,17 @@ pub struct StatsParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StatFileParams {
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
+    /// Путь к файлу как он хранится в индексе (см. list_files).
     pub path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ListFilesParams {
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Glob по path (`**/*.py`, `Documents/**/*.bsl`). Опционально.
     pub pattern: Option<String>,
@@ -247,7 +269,10 @@ pub struct ListFilesParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadFileParams {
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
+    /// Путь к файлу как он хранится в индексе (см. list_files).
     pub path: String,
     /// 1-based, inclusive. None — с начала.
     pub line_start: Option<usize>,
@@ -257,6 +282,8 @@ pub struct ReadFileParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GrepTextParams {
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Регулярное выражение (синтаксис crate `regex`).
     pub regex: Option<String>,
@@ -275,6 +302,8 @@ pub struct GrepTextParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GrepCodeParams {
+    /// ОБЯЗАТЕЛЕН. Алиас репозитория (из --path alias=dir при запуске сервера).
+    /// Без него вызов не пройдёт. Список доступных алиасов — get_stats.
     pub repo: String,
     /// Регулярное выражение (синтаксис crate `regex`).
     pub regex: Option<String>,
@@ -518,34 +547,44 @@ impl CodeIndexServer {
         let mut map = BTreeMap::new();
         for (alias, root_path, db_path) in entries {
             let storage = StoragePool::open_file_readonly(&db_path, PoolConfig::default())?;
-            map.insert(alias, RepoEntry {
-                root_path: Some(root_path),
-                storage: Some(storage),
-                ip: LEGACY_OWN_IP.to_string(),
-                port: crate::federation::client::DEFAULT_REMOTE_PORT,
-                is_local: true,
-                language: None,
-            });
+            map.insert(
+                alias,
+                RepoEntry {
+                    root_path: Some(root_path),
+                    storage: Some(storage),
+                    ip: LEGACY_OWN_IP.to_string(),
+                    port: crate::federation::client::DEFAULT_REMOTE_PORT,
+                    is_local: true,
+                    language: None,
+                },
+            );
         }
         Ok(Self::with_repos(map))
     }
 
     /// Legacy-совместимый конструктор: одно репо под алиасом `default`.
     pub fn open_readonly(root_path: PathBuf, db_path: &Path) -> anyhow::Result<Self> {
-        Self::open_readonly_multi(vec![("default".to_string(), root_path, db_path.to_path_buf())])
+        Self::open_readonly_multi(vec![(
+            "default".to_string(),
+            root_path,
+            db_path.to_path_buf(),
+        )])
     }
 
     /// Конструктор для тестов/встраивания — принимает уже открытое хранилище под alias.
     pub fn with_storage(alias: impl Into<String>, root_path: PathBuf, storage: Storage) -> Self {
         let mut map = BTreeMap::new();
-        map.insert(alias.into(), RepoEntry {
-            root_path: Some(root_path),
-            storage: Some(StoragePool::single(storage)),
-            ip: LEGACY_OWN_IP.to_string(),
-            port: crate::federation::client::DEFAULT_REMOTE_PORT,
-            is_local: true,
-            language: None,
-        });
+        map.insert(
+            alias.into(),
+            RepoEntry {
+                root_path: Some(root_path),
+                storage: Some(StoragePool::single(storage)),
+                ip: LEGACY_OWN_IP.to_string(),
+                port: crate::federation::client::DEFAULT_REMOTE_PORT,
+                is_local: true,
+                language: None,
+            },
+        );
         Self::with_repos(map)
     }
 
@@ -602,9 +641,7 @@ impl CodeIndexServer {
     /// ```
     pub fn apply_tools_whitelist(self, enabled: &[String]) -> Self {
         if enabled.is_empty() {
-            tracing::info!(
-                "[tools].enabled пуст — whitelist выключен, все tools доступны"
-            );
+            tracing::info!("[tools].enabled пуст — whitelist выключен, все tools доступны");
             return self;
         }
         let allowed: BTreeSet<String> = enabled.iter().cloned().collect();
@@ -646,7 +683,10 @@ impl CodeIndexServer {
             return self.with_mass_mode_tools(BTreeSet::new());
         }
         let known: BTreeSet<&str> = MASS_MODE_PARAMS.iter().map(|(n, _)| *n).collect();
-        let unknown: Vec<&String> = names.iter().filter(|n| !known.contains(n.as_str())).collect();
+        let unknown: Vec<&String> = names
+            .iter()
+            .filter(|n| !known.contains(n.as_str()))
+            .collect();
         if !unknown.is_empty() {
             tracing::warn!(
                 "[mcp].mass_mode_tools содержит имена без массового режима (опечатка?): {:?}. \
@@ -722,18 +762,14 @@ impl CodeIndexServer {
         let prev_languages = self.active_languages.load_full();
         let changed = (*prev_languages) != new_active_languages;
 
-        self.active_languages
-            .store(Arc::new(new_active_languages));
+        self.active_languages.store(Arc::new(new_active_languages));
         self.extension_tools.store(Arc::new(new_tools));
 
         if changed {
             tracing::info!(
                 "Состав активных языков изменился: {:?} → {:?}. Отправляю tools/list_changed.",
                 prev_languages.iter().collect::<Vec<_>>(),
-                self.active_languages
-                    .load()
-                    .iter()
-                    .collect::<Vec<_>>()
+                self.active_languages.load().iter().collect::<Vec<_>>()
             );
             self.notify_tools_changed_if_peer().await;
         }
@@ -786,10 +822,7 @@ impl CodeIndexServer {
 // — клиент не должен видеть невалидных вариантов.
 
 fn collect_active_languages(repos: &BTreeMap<String, RepoEntry>) -> BTreeSet<String> {
-    repos
-        .values()
-        .filter_map(|e| e.language.clone())
-        .collect()
+    repos.values().filter_map(|e| e.language.clone()).collect()
 }
 
 fn collect_extension_tools(
@@ -842,35 +875,65 @@ fn mass_rows_to_results(rows: Vec<Result<String, String>>) -> String {
 
 #[tool_router]
 impl CodeIndexServer {
-    #[tool(description = "Нечёткий FTS-поиск функций по СЛОВАМ (bm25, OR между словами, префиксные термы): имя важнее qualified_name/docstring. Принимает и точное имя, и описание из слов ('расчёт цены продажи реализация'). Выдача БЕЗ тел — только локации (имя/путь/строки/сигнатура/обрезанный docstring). Тело конкретной функции — get_function; локации по ТОЧНОМУ имени — find_symbol; regex по коду — grep_code. path_glob — фильтр по пути. При 0 совпадений — hint; на BSL-репо он подсказывает search_terms (поиск процедур по смысловым термам).")]
+    #[tool(
+        description = "Нечёткий FTS-поиск функций по СЛОВАМ (bm25, OR между словами, префиксные термы): имя важнее qualified_name/docstring. Принимает и точное имя, и описание из слов ('расчёт цены продажи реализация'). Выдача БЕЗ тел — только локации (имя/путь/строки/сигнатура/обрезанный docstring). Тело конкретной функции — get_function; локации по ТОЧНОМУ имени — find_symbol; regex по коду — grep_code. path_glob — фильтр по пути. При 0 совпадений — hint; на BSL-репо он подсказывает search_terms (поиск процедур по смысловым термам)."
+    )]
     async fn search_function(&self, Parameters(p): Parameters<SearchParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "search_function", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "search_function",
+                &p,
+            )
+            .await;
         }
         tools::search_function(entry, p.query, p.limit, p.language, p.path_glob).await
     }
 
-    #[tool(description = "Нечёткий FTS-поиск классов/структур по СЛОВАМ (bm25): имя важнее docstring. Выдача БЕЗ тел — только локации (имя/путь/строки/bases). Тело конкретного класса — get_class; локации по ТОЧНОМУ имени — find_symbol. path_glob — фильтр по пути. При 0 совпадений — hint.")]
+    #[tool(
+        description = "Нечёткий FTS-поиск классов/структур по СЛОВАМ (bm25): имя важнее docstring. Выдача БЕЗ тел — только локации (имя/путь/строки/bases). Тело конкретного класса — get_class; локации по ТОЧНОМУ имени — find_symbol. path_glob — фильтр по пути. При 0 совпадений — hint."
+    )]
     async fn search_class(&self, Parameters(p): Parameters<SearchParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "search_class", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "search_class",
+                &p,
+            )
+            .await;
         }
         tools::search_class(entry, p.query, p.limit, p.language, p.path_glob).await
     }
 
-    #[tool(description = "Тело функции по ТОЧНОМУ имени (с исходником). Уникальное имя → одно тело. НЕуникальное (совпадений > порога) → тела опускаются, возвращаются локации + hint: уточните path_glob к нужному файлу. Навигация «где символ» без тел — find_symbol; поиск по словам — search_function. Возвращает JSON-массив FunctionRecord (или облегчённые локации при множестве). МАССОВЫЙ РЕЖИМ ('names'): батчи список ТОЛЬКО когда точно нужны тела ВСЕХ этих функций и результат одной не отменит надобность в остальных (например, правишь их все). Если ОТБИРАЕШЬ, какие из кандидатов релевантны, — НЕ батчи, бери по одному с остановкой по ходу. Сомневаешься — по одному. Ответ на батч — {results:[...]} в порядке запроса.")]
+    #[tool(
+        description = "Тело функции по ТОЧНОМУ имени (с исходником). Уникальное имя → одно тело. НЕуникальное (совпадений > порога) → тела опускаются, возвращаются локации + hint: уточните path_glob к нужному файлу. Навигация «где символ» без тел — find_symbol; поиск по словам — search_function. Возвращает JSON-массив FunctionRecord (или облегчённые локации при множестве). МАССОВЫЙ РЕЖИМ ('names'): батчи список ТОЛЬКО когда точно нужны тела ВСЕХ этих функций и результат одной не отменит надобность в остальных (например, правишь их все). Если ОТБИРАЕШЬ, какие из кандидатов релевантны, — НЕ батчи, бери по одному с остановкой по ходу. Сомневаешься — по одному. Ответ на батч — {results:[...]} в порядке запроса."
+    )]
     async fn get_function(&self, Parameters(p): Parameters<MultiNameParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_function", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_function",
+                &p,
+            )
+            .await;
         }
         if let Some(names) = p.names {
             // Массовый режим — конкуррентно: каждый элемент берёт своё соединение
@@ -899,13 +962,23 @@ impl CodeIndexServer {
         }
     }
 
-    #[tool(description = "Тело класса/структуры по ТОЧНОМУ имени (с исходником). НЕуникальное имя (совпадений > порога) → тела опускаются, локации + hint, уточните path_glob. Навигация без тел — find_symbol; поиск по словам — search_class. Возвращает JSON-массив ClassRecord (или локации при множестве). МАССОВЫЙ РЕЖИМ ('names'): батчи список ТОЛЬКО когда точно нужны тела ВСЕХ этих классов и результат одного не отменит надобность в остальных (например, правишь их все). Если ОТБИРАЕШЬ, какие из кандидатов релевантны, — НЕ батчи, бери по одному с остановкой по ходу. Сомневаешься — по одному. Ответ на батч — {results:[...]} в порядке запроса.")]
+    #[tool(
+        description = "Тело класса/структуры по ТОЧНОМУ имени (с исходником). НЕуникальное имя (совпадений > порога) → тела опускаются, локации + hint, уточните path_glob. Навигация без тел — find_symbol; поиск по словам — search_class. Возвращает JSON-массив ClassRecord (или локации при множестве). МАССОВЫЙ РЕЖИМ ('names'): батчи список ТОЛЬКО когда точно нужны тела ВСЕХ этих классов и результат одного не отменит надобность в остальных (например, правишь их все). Если ОТБИРАЕШЬ, какие из кандидатов релевантны, — НЕ батчи, бери по одному с остановкой по ходу. Сомневаешься — по одному. Ответ на батч — {results:[...]} в порядке запроса."
+    )]
     async fn get_class(&self, Parameters(p): Parameters<MultiNameParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_class", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_class",
+                &p,
+            )
+            .await;
         }
         if let Some(names) = p.names {
             // Массовый режим — конкуррентно, зеркало get_function (см. выше).
@@ -932,92 +1005,177 @@ impl CodeIndexServer {
         }
     }
 
-    #[tool(description = "Найти вызывателей функции (callers) в указанном репо. limit — cap (default 200); на «горячих» функциях ответ обрезается с {truncated,total,limit}. Возвращает JSON-массив CallRecord.")]
+    #[tool(
+        description = "Найти вызывателей функции (callers) в указанном репо. limit — cap (default 200); на «горячих» функциях ответ обрезается с {truncated,total,limit}. Возвращает JSON-массив CallRecord."
+    )]
     async fn get_callers(&self, Parameters(p): Parameters<FunctionNameParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_callers", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_callers",
+                &p,
+            )
+            .await;
         }
         tools::get_callers(entry, p.function_name, p.language, p.limit).await
     }
 
-    #[tool(description = "Найти что вызывает функция (callees) в указанном репо. limit — cap (default 200); при обрезке {truncated,total,limit}. Возвращает JSON-массив CallRecord.")]
+    #[tool(
+        description = "Найти что вызывает функция (callees) в указанном репо. limit — cap (default 200); при обрезке {truncated,total,limit}. Возвращает JSON-массив CallRecord."
+    )]
     async fn get_callees(&self, Parameters(p): Parameters<FunctionNameParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_callees", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_callees",
+                &p,
+            )
+            .await;
         }
         tools::get_callees(entry, p.function_name, p.language, p.limit).await
     }
 
-    #[tool(description = "Кратчайший путь в графе вызовов от функции 'from' до 'to' через таблицу calls (рекурсивный CTE, BFS, max_depth по умолчанию 5, [1..10]). Универсальный, любой язык. Возвращает {from,to,found,path:[{caller,callee,line}]}. Для BSL с call_type — find_path_bsl.")]
+    #[tool(
+        description = "Кратчайший путь в графе вызовов от функции 'from' до 'to' через таблицу calls (рекурсивный CTE, BFS, max_depth по умолчанию 5, [1..10]). Универсальный, любой язык. Возвращает {from,to,found,path:[{caller,callee,line}]}. Для BSL с call_type — find_path_bsl."
+    )]
     async fn find_path(&self, Parameters(p): Parameters<FindPathParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "find_path", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "find_path",
+                &p,
+            )
+            .await;
         }
         tools::find_path(entry, p.from, p.to, p.max_depth, p.language).await
     }
 
-    #[tool(description = "Дерево вызовов от функции 'root' на глубину max_depth (по умолчанию 3, [1..10]) через таблицу calls. direction: callees/down (что вызывает root вглубь, по умолчанию) или callers/up (кто вызывает root). max_nodes cap (default 200). Универсальный, любой язык. Возвращает {root,direction,edges:[{caller,callee,line,depth}],tree:{name,children}}.")]
+    #[tool(
+        description = "Дерево вызовов от функции 'root' на глубину max_depth (по умолчанию 3, [1..10]) через таблицу calls. direction: callees/down (что вызывает root вглубь, по умолчанию) или callers/up (кто вызывает root). max_nodes cap (default 200). Универсальный, любой язык. Возвращает {root,direction,edges:[{caller,callee,line,depth}],tree:{name,children}}."
+    )]
     async fn get_call_tree(&self, Parameters(p): Parameters<CallTreeParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_call_tree", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_call_tree",
+                &p,
+            )
+            .await;
         }
-        tools::get_call_tree(entry, p.root, p.direction, p.max_depth, p.max_nodes, p.language).await
+        tools::get_call_tree(
+            entry,
+            p.root,
+            p.direction,
+            p.max_depth,
+            p.max_nodes,
+            p.language,
+        )
+        .await
     }
 
-    #[tool(description = "Навигация: ГДЕ определён символ по ТОЧНОМУ имени — локации функций/классов/переменных/импортов БЕЗ тел (как search_*). Тело конкретного — get_function/get_class. Возвращает {functions, classes, variables, imports} (облегчённые: имя/путь/строки/сигнатура). Голым именем зови ТОЛЬКО для уникального имени: если имя — стандартный обработчик объекта/набора записей или просто распространённое, вернутся сотни локаций (truncated) — для таких сразу задавай path_glob (фильтр по пути).")]
+    #[tool(
+        description = "Навигация: ГДЕ определён символ по ТОЧНОМУ имени — локации функций/классов/переменных/импортов БЕЗ тел (как search_*). Тело конкретного — get_function/get_class. Возвращает {functions, classes, variables, imports} (облегчённые: имя/путь/строки/сигнатура). Голым именем зови ТОЛЬКО для уникального имени: если имя — стандартный обработчик объекта/набора записей или просто распространённое, вернутся сотни локаций (truncated) — для таких сразу задавай path_glob (фильтр по пути)."
+    )]
     async fn find_symbol(&self, Parameters(p): Parameters<NameParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "find_symbol", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "find_symbol",
+                &p,
+            )
+            .await;
         }
         tools::find_symbol(entry, p.name, p.language, p.path_glob).await
     }
 
-    #[tool(description = "Импорты файла (file_id) или модуля (module) в указанном репо. limit — cap (default 200); при обрезке {truncated,total,limit}. Возвращает JSON-массив ImportRecord.")]
+    #[tool(
+        description = "Импорты файла (file_id) или модуля (module) в указанном репо. limit — cap (default 200); при обрезке {truncated,total,limit}. Возвращает JSON-массив ImportRecord."
+    )]
     async fn get_imports(&self, Parameters(p): Parameters<ImportParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_imports", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_imports",
+                &p,
+            )
+            .await;
         }
         tools::get_imports(entry, p.file_id, p.module, p.language, p.limit).await
     }
 
-    #[tool(description = "Карта/оглавление файла БЕЗ тел функций/классов (безопасно на больших модулях): имена, сигнатуры (args/return_type), диапазоны строк, обрезанные docstring, импорты, переменные + functions_total/classes_total. Тело конкретной функции — get_function(name) или read_file(line_start,line_end). Возвращает JSON-объект.")]
+    #[tool(
+        description = "Карта/оглавление файла БЕЗ тел функций/классов (безопасно на больших модулях): имена, сигнатуры (args/return_type), диапазоны строк, обрезанные docstring, импорты, переменные + functions_total/classes_total. Тело конкретной функции — get_function(name) или read_file(line_start,line_end). Возвращает JSON-объект."
+    )]
     async fn get_file_summary(&self, Parameters(p): Parameters<FilePathParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "get_file_summary", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "get_file_summary",
+                &p,
+            )
+            .await;
         }
         tools::get_file_summary(entry, p.path).await
     }
 
-    #[tool(description = "Статистика индекса. Если repo указан — для одного репо, иначе — массив по всем подключённым репо.")]
+    #[tool(
+        description = "Статистика индекса. Если repo указан — для одного репо, иначе — массив по всем подключённым репо."
+    )]
     async fn get_stats(&self, Parameters(p): Parameters<StatsParams>) -> String {
         // Если запрос адресован конкретному remote-репо — форвардим как обычно.
         if let Some(ref alias) = p.repo {
             if let Some(entry) = self.repos.get(alias) {
                 if !entry.is_local {
                     return crate::federation::dispatcher::dispatch_remote(
-                        &self.clients, &entry.ip, entry.port, "get_stats", &p,
-                    ).await;
+                        &self.clients,
+                        &entry.ip,
+                        entry.port,
+                        "get_stats",
+                        &p,
+                    )
+                    .await;
                 }
             }
         }
@@ -1025,24 +1183,44 @@ impl CodeIndexServer {
         tools::get_stats(self, p.repo).await
     }
 
-    #[tool(description = "FTS поиск по текстовым файлам (md, txt, yaml, toml) в указанном репо. path_glob — опциональный фильтр по пути. Возвращает JSON-массив [{path, snippet}].")]
+    #[tool(
+        description = "FTS поиск по текстовым файлам (md, txt, yaml, toml) в указанном репо. path_glob — опциональный фильтр по пути. Возвращает JSON-массив [{path, snippet}]."
+    )]
     async fn search_text(&self, Parameters(p): Parameters<SearchParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "search_text", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "search_text",
+                &p,
+            )
+            .await;
         }
         tools::search_text(entry, p.query, p.limit, p.language, p.path_glob).await
     }
 
-    #[tool(description = "Поиск по телам функций и классов. pattern — подстрока (LIKE), regex — регулярное выражение (REGEXP); query — алиас regex. path_glob — фильтр по пути (SQL pushdown; альтернативы `{a,b}` поддерживаются). context_lines — N строк до/после совпадения. limit — число находок (default 30); при обрезке truncated=true. Возвращает {files: {\"<path>\": [\"<name> (<kind>) L<start>-<end>: <строки>(+N)\", …]}, shown, limit, truncated} — по одной строке-локатору на функцию/класс; контекст (context_lines>0) дописан строками \"N: текст\".")]
+    #[tool(
+        description = "Поиск ТОЛЬКО в телах функций и классов (module-level код — объявления Перем, таблицы инициализации/маршрутизации, константы и строковые литералы ВНЕ процедур — НЕ виден; для поиска по всему файлу бери grep_code). Плюс grep_body в том, что показывает, в какой ИМЕННО функции/классе найден паттерн. pattern — подстрока (LIKE), regex — регулярное выражение (REGEXP); query — алиас regex. path_glob — фильтр по пути (SQL pushdown; альтернативы `{a,b}` поддерживаются). context_lines — N строк до/после совпадения. limit — число находок (default 30); при обрезке truncated=true. Возвращает {files: {\"<path>\": [\"<name> (<kind>) L<start>-<end>: <строки>(+N)\", …]}, shown, limit, truncated} — по одной строке-локатору на функцию/класс; контекст (context_lines>0) дописан строками \"N: текст\"."
+    )]
     async fn grep_body(&self, Parameters(p): Parameters<GrepBodyParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "grep_body", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "grep_body",
+                &p,
+            )
+            .await;
         }
         // `query` — алиас для `regex` (частая путаница моделей).
         let regex = p.regex.clone().or_else(|| p.query.clone());
@@ -1050,77 +1228,151 @@ impl CodeIndexServer {
             return "{\"error\": \"grep_body: укажите pattern= (подстрока) или regex= (regexp). Для кода вне тел функций — grep_code(regex=…); по xml/md/yaml — grep_text(regex=…).\"}".to_string();
         }
         tools::grep_body(
-            entry, p.pattern, regex, p.language, p.limit, p.path_glob, p.context_lines,
+            entry,
+            p.pattern,
+            regex,
+            p.language,
+            p.limit,
+            p.path_glob,
+            p.context_lines,
         )
         .await
     }
 
-    #[tool(description = "Метаданные файла из индекса: existence, размер, mtime, lines_total, language, category. Чистая выборка из таблицы files (быстро).")]
+    #[tool(
+        description = "Метаданные файла из индекса: existence, размер, mtime, lines_total, language, category. Чистая выборка из таблицы files (быстро). ОБЯЗАТЕЛЬНЫ оба параметра: repo (алиас репозитория, список — get_stats) и path."
+    )]
     async fn stat_file(&self, Parameters(p): Parameters<StatFileParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "stat_file", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "stat_file",
+                &p,
+            )
+            .await;
         }
         tools::stat_file(entry, p.path).await
     }
 
-    #[tool(description = "Список файлов в индексе с фильтрами. pattern — glob по пути (`**/*.py`; альтернативы `{a,b}`: `**/*.{rs,toml}`), path_prefix — префикс (`src/auth/`), language — язык. Возвращает JSON-массив строк \"<path> | <lang> | <N> lines | <size>\" (mtime — в _meta.file_mtimes).")]
+    #[tool(
+        description = "Список файлов в индексе с фильтрами. pattern — glob по пути (`**/*.py`; альтернативы `{a,b}`: `**/*.{rs,toml}`), path_prefix — префикс (`src/auth/`), language — язык. Возвращает JSON-массив строк \"<path> | <lang> | <N> lines | <size>\" (mtime — в _meta.file_mtimes)."
+    )]
     async fn list_files(&self, Parameters(p): Parameters<ListFilesParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "list_files", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "list_files",
+                &p,
+            )
+            .await;
         }
         tools::list_files(entry, p.pattern, p.path_prefix, p.language, p.limit).await
     }
 
-    #[tool(description = "Прочитать содержимое файла из индекса. Отдаёт реальный content и для text-файлов (yaml/md/json/toml/xml/sh и др.), и для code-файлов (zstd-decode из file_contents, Phase 2 v0.8.0+); поле category в ответе — \"text\" или \"code\". Oversize code-файлы (> max_code_file_size_bytes) возвращают oversize=true и пустой content (их читать через get_function/grep_body/grep_code). line_start/line_end — 1-based, inclusive. Soft-cap 5000 строк / 500 КБ (truncated=true при обрезке), hard-cap 2 МБ.")]
+    #[tool(
+        description = "Прочитать содержимое файла из индекса. ОБЯЗАТЕЛЬНЫ оба параметра: repo (алиас репозитория, список — get_stats) и path. Отдаёт реальный content и для text-файлов (yaml/md/json/toml/xml/sh и др.), и для code-файлов (zstd-decode из file_contents, Phase 2 v0.8.0+); поле category в ответе — \"text\" или \"code\". Oversize code-файлы (> max_code_file_size_bytes) возвращают oversize=true и пустой content (их читать через get_function/grep_body/grep_code). line_start/line_end — 1-based, inclusive. Soft-cap 5000 строк / 500 КБ (truncated=true при обрезке), hard-cap 2 МБ."
+    )]
     async fn read_file(&self, Parameters(p): Parameters<ReadFileParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "read_file", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "read_file",
+                &p,
+            )
+            .await;
         }
         tools::read_file(entry, p.path, p.line_start, p.line_end).await
     }
 
-    #[tool(description = "Regex-поиск по содержимому text-файлов (параметр regex=, синоним query=). path_glob ИЛИ language обязательно желателен (full-scan по всем text-файлам — дорого); альтернативы `{a,b}` в path_glob поддерживаются. context_lines — N строк до/после. limit — число находок (default 30 при full-scan); при обрезке truncated=true. Возвращает {files: {\"<path>\": [\"N: content\", …]}, shown, limit, truncated} — строки \"номер: содержимое\"; контекст (context_lines>0) влит в тот же массив, отсортирован по номеру строки.")]
+    #[tool(
+        description = "Regex-поиск по содержимому text-файлов (параметр regex=, синоним query=). path_glob ИЛИ language обязательно желателен (full-scan по всем text-файлам — дорого); альтернативы `{a,b}` в path_glob поддерживаются. context_lines — N строк до/после. limit — число находок (default 30 при full-scan); при обрезке truncated=true. Возвращает {files: {\"<path>\": [\"N: content\", …]}, shown, limit, truncated} — строки \"номер: содержимое\"; контекст (context_lines>0) влит в тот же массив, отсортирован по номеру строки."
+    )]
     async fn grep_text(&self, Parameters(p): Parameters<GrepTextParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "grep_text", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "grep_text",
+                &p,
+            )
+            .await;
         }
         // `query` — алиас для `regex` (частая путаница моделей).
         let regex = match p.regex.clone().or_else(|| p.query.clone()) {
             Some(r) if !r.trim().is_empty() => r,
             _ => return "{\"error\": \"grep_text: укажите regex= (синтаксис crate regex), не query=. Для кода .bsl/.py/.rs — grep_code(regex=…) или grep_body.\"}".to_string(),
         };
-        tools::grep_text(entry, regex, p.path_glob, p.language, p.limit, p.context_lines).await
+        tools::grep_text(
+            entry,
+            regex,
+            p.path_glob,
+            p.language,
+            p.limit,
+            p.context_lines,
+        )
+        .await
     }
 
-    #[tool(description = "Regex-поиск по содержимому **code-файлов** (Phase 2, v0.8.0; параметр regex=, синоним query=): module-level код, идентификаторы, комментарии вне тел, макросы, use-импорты — всё что не ловит grep_body. Источник — таблица file_contents (zstd). path_glob ИЛИ language обязательно желателен (full-scan дорогой из-за zstd-decode каждого файла); альтернативы `{a,b}` в path_glob поддерживаются. Файлы oversize=true пропускаются. limit — число совпадений (default 30); при обрезке truncated=true (дошлите больший limit). Возвращает {files: {\"<path>\": [\"N: content\", …]}, shown, limit, truncated} — строки \"номер: содержимое\"; контекст (context_lines>0) влит в тот же массив, отсортирован по номеру строки.")]
+    #[tool(
+        description = "Regex-поиск по ПОЛНОМУ тексту code-файлов (Phase 2, v0.8.0; параметр regex=, синоним query=): ищет по ВСЕМУ файлу — и module-level (объявления Перем, таблицы маршрутизации/инициализации, константы, строковые литералы, комментарии, импорты), И внутри тел функций/классов. Это НАДмножество grep_body по покрытию текста. Для поиска ВСЕХ вхождений имени/строки где угодно в файле (например имя веб-сервиса в таблице маршрутизации + его же использование в теле) — бери grep_code, НЕ grep_body (тот видит только тела и пропустит module-level). grep_body — когда нужно узнать, в какой ИМЕННО функции/процедуре встречается паттерн. Источник — таблица file_contents (zstd). path_glob ИЛИ language обязательно желателен (full-scan дорогой из-за zstd-decode каждого файла); альтернативы `{a,b}` в path_glob поддерживаются. Файлы oversize=true пропускаются. limit — число совпадений (default 30); при обрезке truncated=true (дошлите больший limit). Возвращает {files: {\"<path>\": [\"N: content\", …]}, shown, limit, truncated} — строки \"номер: содержимое\"; контекст (context_lines>0) влит в тот же массив, отсортирован по номеру строки."
+    )]
     async fn grep_code(&self, Parameters(p): Parameters<GrepCodeParams>) -> String {
-        let entry = match self.resolve_repo(&p.repo) { Ok(e) => e, Err(j) => return j };
+        let entry = match self.resolve_repo(&p.repo) {
+            Ok(e) => e,
+            Err(j) => return j,
+        };
         if !entry.is_local {
             return crate::federation::dispatcher::dispatch_remote(
-                &self.clients, &entry.ip, entry.port, "grep_code", &p,
-            ).await;
+                &self.clients,
+                &entry.ip,
+                entry.port,
+                "grep_code",
+                &p,
+            )
+            .await;
         }
         // `query` — алиас для `regex` (частая путаница моделей).
         let regex = match p.regex.clone().or_else(|| p.query.clone()) {
             Some(r) if !r.trim().is_empty() => r,
             _ => return "{\"error\": \"grep_code: укажите regex= (синтаксис crate regex), не query=. Для тел функций/классов — grep_body; для xml/md/yaml — grep_text(regex=…).\"}".to_string(),
         };
-        tools::grep_code(entry, regex, p.path_glob, p.language, p.limit, p.context_lines).await
+        tools::grep_code(
+            entry,
+            regex,
+            p.path_glob,
+            p.language,
+            p.limit,
+            p.context_lines,
+        )
+        .await
     }
 
-    #[tool(description = "Проверка живости MCP-сервера и демона индексации по всем подключённым репо. Возвращает JSON.")]
+    #[tool(
+        description = "Проверка живости MCP-сервера и демона индексации по всем подключённым репо. Возвращает JSON."
+    )]
     async fn health(&self) -> String {
         tools::health(self).await
     }
@@ -1501,11 +1753,7 @@ impl ServerHandler for CodeIndexServer {
 
         // 1. Сначала core-tools — они есть всегда.
         if self.tool_router.has_route(request.name.as_ref()) {
-            let tcc = rmcp::handler::server::tool::ToolCallContext::new(
-                self,
-                request,
-                context,
-            );
+            let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
             let r = self.tool_router.call(tcc).await;
             self.maybe_cache(&cache_key, repo_opt.as_deref().unwrap_or(""), &r);
             return self.finish(&session_id, r);
@@ -1533,16 +1781,17 @@ impl ServerHandler for CodeIndexServer {
             .get("repo")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                ErrorData::invalid_params(
-                    "tool requires 'repo' parameter (string)",
-                    None,
-                )
+                ErrorData::invalid_params("tool requires 'repo' parameter (string)", None)
             })?
             .to_string();
 
         let entry = self.repos.get(&repo).ok_or_else(|| {
             ErrorData::invalid_params(
-                format!("unknown repo '{}'. Available: {:?}", repo, self.repo_aliases()),
+                format!(
+                    "unknown repo '{}'. Available: {:?}",
+                    repo,
+                    self.repo_aliases()
+                ),
                 None,
             )
         })?;
@@ -1707,7 +1956,10 @@ mod mass_mode_tests {
         assert!(props.contains_key("name"), "одиночный параметр цел");
         let desc = t.description.as_ref().unwrap();
         assert!(!desc.contains("МАССОВ"), "фраза обрезана: {desc}");
-        assert!(desc.contains("Тело функции"), "полезная часть описания цела");
+        assert!(
+            desc.contains("Тело функции"),
+            "полезная часть описания цела"
+        );
     }
 
     #[test]
@@ -1757,6 +2009,36 @@ mod mass_mode_tests {
         assert!(names.contains("get_class"));
         assert!(names.contains("get_object_structure"));
         assert_eq!(MASS_MODE_PARAMS.len(), 3);
+    }
+}
+
+// ── Тесты алиасов параметров ───────────────────────────────────────────────
+
+#[cfg(test)]
+mod param_alias_tests {
+    use super::*;
+
+    #[test]
+    fn function_name_params_accepts_name_and_symbol_aliases() {
+        // Модели часто шлют 'name' в get_callers/get_callees (путают ключ с
+        // get_function). serde-alias принимает его как function_name — иначе
+        // слепой вызов падал «missing field function_name» (потерянный ход).
+        let by_name: FunctionNameParams =
+            serde_json::from_value(serde_json::json!({"repo": "ut", "name": "ПолучитьОписаниеWS"}))
+                .expect("alias 'name' должен приниматься");
+        assert_eq!(by_name.function_name, "ПолучитьОписаниеWS");
+
+        let by_symbol: FunctionNameParams = serde_json::from_value(
+            serde_json::json!({"repo": "ut", "symbol": "ПолучитьОписаниеWS"}),
+        )
+        .expect("alias 'symbol' должен приниматься");
+        assert_eq!(by_symbol.function_name, "ПолучитьОписаниеWS");
+
+        // Канонический ключ по-прежнему работает.
+        let canon: FunctionNameParams =
+            serde_json::from_value(serde_json::json!({"repo": "ut", "function_name": "X"}))
+                .expect("канонический ключ function_name");
+        assert_eq!(canon.function_name, "X");
     }
 }
 
@@ -1827,7 +2109,9 @@ mod conditional_registration_tests {
 
         let server = CodeIndexServer::with_repos_and_registry(repos, reg);
         // bsl не активен (есть только python-репо), tools нет.
-        assert!(server.active_language_names().contains(&"python".to_string()));
+        assert!(server
+            .active_language_names()
+            .contains(&"python".to_string()));
         assert_eq!(server.extension_tools_count(), 0);
     }
 
@@ -1917,9 +2201,7 @@ mod conditional_registration_tests {
         new_set.insert("bsl".to_string());
         server.reload_extensions(new_set).await;
 
-        assert!(server
-            .active_language_names()
-            .contains(&"bsl".to_string()));
+        assert!(server.active_language_names().contains(&"bsl".to_string()));
         assert_eq!(
             server.extension_tools_count(),
             1,
@@ -1953,8 +2235,15 @@ mod strip_meta_tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let text = v["content"][0]["text"].as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert!(parsed.get("_meta").is_none(), "_meta остался во вложенном JSON");
-        assert_eq!(parsed["result"], json!([1, 2, 3]), "result должен сохраниться");
+        assert!(
+            parsed.get("_meta").is_none(),
+            "_meta остался во вложенном JSON"
+        );
+        assert_eq!(
+            parsed["result"],
+            json!([1, 2, 3]),
+            "result должен сохраниться"
+        );
     }
 
     // structuredContent-форма (rmcp structured output, extension-tools): `_meta`
@@ -1986,7 +2275,8 @@ mod strip_meta_tests {
     // Нет `_meta` → payload не меняется (changed=false), без лишней пересборки.
     #[test]
     fn no_meta_is_unchanged() {
-        let payload = json!({"content": [{"type": "text", "text": "{\"result\":[1]}"}]}).to_string();
+        let payload =
+            json!({"content": [{"type": "text", "text": "{\"result\":[1]}"}]}).to_string();
         let (out, changed) = strip_meta(&payload);
         assert!(!changed, "без _meta changed должен быть false");
         assert_eq!(out, payload);

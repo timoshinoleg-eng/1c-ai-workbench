@@ -16,6 +16,10 @@
 - [ ] If distributed commercially, Inno Setup terms were reviewed and the required
   commercial license was obtained.
 - [ ] Every wheel and both release executables have SHA-256 manifests.
+- [ ] `scripts/setup.ps1` pins the published release tag and SHA-256 for the
+  exact `code-index 0.45.0` asset; an absent or stale pin fails closed.
+- [ ] The installed payload reports exactly `code-index 0.45.0` before offline
+  setup, upgrade, downgrade, and uninstall acceptance continue.
 - [ ] Offline setup, upgrade preservation, and uninstall acceptance pass.
 - [ ] Default downgrade rejection passes; any `/ALLOWDOWNGRADE=1` rollback is
   separately approved and recorded.
@@ -36,6 +40,8 @@
 
 - [ ] The signed installer, `bsl-indexer.exe`, and their checksum files are the
   exact assets produced by the tagged release workflow.
+- [ ] The final release tag and `bsl-indexer.exe` checksum are written back to
+  `scripts/setup.ps1`, reviewed, and revalidated before publication.
 - [ ] Release notes describe supported Python/Windows versions, offline behavior,
   upgrade behavior, uninstall preservation, and known limitations.
 - [ ] Rollback installer and previous signed release remain available.

@@ -33,9 +33,10 @@ pre-commit formatting. This is a repository boundary, not a quality bypass:
   installation and indexing smoke test;
 - both snapshots are covered by explicit upstream REUSE annotations.
 
-Two Clippy API-size warnings in code-index 0.42.2 require architectural changes
-and are allowed by name in the dedicated job. They remain part of the isolated
-0.45 upgrade evaluation; no warning category is disabled globally.
+Two Clippy API-size warnings in the vendored code-index API require architectural
+changes and are allowed by name in the dedicated job. Correctness, suspicious-
+code, and performance categories remain blocking; no category is disabled
+globally.
 
 ## Local validation
 

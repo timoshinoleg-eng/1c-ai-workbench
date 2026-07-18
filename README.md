@@ -76,15 +76,15 @@ mirror. Исходная выгрузка не изменяется, live write 
 - PowerShell 5.1+.
 - Git for Windows.
 - Python 3.10+ для Python MCP bridges.
-- Доступ к GitHub Releases для загрузки prebuilt `bsl-indexer.exe`
-  через `scripts\setup.ps1` либо уже распакованный release/partner ZIP.
+- Подписанный installer с prebuilt `bsl-indexer.exe`, проверенный release artifact
+  либо Rust toolchain для сборки индексатора из исходников.
 - Файлы выгрузки конфигурации 1С в `C:\1c-ai-client\dump`.
 - Опционально: Rust toolchain с `cargo` и `rustc`, если нужно пересобрать
   `bsl-indexer` из исходников.
 
 `scripts\setup.ps1` создаёт `.venv`, ставит зависимости bridge-серверов и
-скачивает `tools\code-index-mcp\target\release\bsl-indexer.exe` из release
-`v0.9.0-pilot` с SHA256-проверкой.
+принимает только `code-index 0.45.0`. Автозагрузка разрешается лишь с явно
+переданными `-ReleaseTag` и `-IndexerSha256`; отсутствующий pin падает закрыто.
 
 ## Быстрый старт
 

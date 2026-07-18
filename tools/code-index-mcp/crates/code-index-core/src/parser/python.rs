@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 
 use super::types::{
-    sha256_hex, hash_ast,
-    ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport, ParsedVariable,
+    hash_ast, sha256_hex, ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport,
+    ParsedVariable,
 };
 use super::LanguageParser;
 
@@ -120,7 +120,10 @@ fn visit_node(
             // Рекурсивно обходим аргументы вызова для вложенных вызовов
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.kind() != "function" && child.kind() != "identifier" && child.kind() != "attribute" {
+                if child.kind() != "function"
+                    && child.kind() != "identifier"
+                    && child.kind() != "attribute"
+                {
                     visit_node(child, ctx, class_name, current_func, node.kind());
                 }
             }
@@ -163,7 +166,10 @@ fn visit_node(
 }
 
 /// Найти первый дочерний узел с заданным kind
-fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+fn find_child_by_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == kind {
@@ -174,7 +180,10 @@ fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tre
 }
 
 /// Найти дочерний узел по field name
-fn find_child_by_field<'a>(node: tree_sitter::Node<'a>, field: &str) -> Option<tree_sitter::Node<'a>> {
+fn find_child_by_field<'a>(
+    node: tree_sitter::Node<'a>,
+    field: &str,
+) -> Option<tree_sitter::Node<'a>> {
     node.child_by_field_name(field)
 }
 
@@ -211,12 +220,12 @@ fn visit_function(
         .map(|n| node_text(n, source).to_string());
 
     // Тип возвращаемого значения (аннотация после ->)
-    let return_type = node.child_by_field_name("return_type")
+    let return_type = node
+        .child_by_field_name("return_type")
         .map(|n| node_text(n, source).to_string());
 
     // Тело функции
-    let body_node = find_child_by_field(node, "body")
-        .or_else(|| find_child_by_kind(node, "block"));
+    let body_node = find_child_by_field(node, "body").or_else(|| find_child_by_kind(node, "block"));
 
     // Docstring
     let docstring = body_node.and_then(|b| extract_docstring(b, source));
@@ -249,12 +258,18 @@ fn visit_function(
     ctx.functions.push(func);
 
     // Рекурсивно обходим тело функции (для вложенных вызовов, переменных и т.д.)
-    if let Some(body_node) = find_child_by_field(node, "body")
-        .or_else(|| find_child_by_kind(node, "block"))
+    if let Some(body_node) =
+        find_child_by_field(node, "body").or_else(|| find_child_by_kind(node, "block"))
     {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind());
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+            );
         }
     }
 }
@@ -282,11 +297,7 @@ fn is_async_function(node: tree_sitter::Node, source: &[u8], _parent_kind: &str)
 }
 
 /// Обработать class_definition
-fn visit_class(
-    node: tree_sitter::Node,
-    ctx: &mut VisitContext,
-    current_func: Option<&str>,
-) {
+fn visit_class(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Option<&str>) {
     let source = ctx.source;
 
     // Имя класса
@@ -308,8 +319,7 @@ fn visit_class(
         .map(|n| node_text(n, source).to_string());
 
     // Тело класса
-    let body_node = find_child_by_field(node, "body")
-        .or_else(|| find_child_by_kind(node, "block"));
+    let body_node = find_child_by_field(node, "body").or_else(|| find_child_by_kind(node, "block"));
 
     // Docstring
     let docstring = body_node.and_then(|b| extract_docstring(b, source));
@@ -329,8 +339,8 @@ fn visit_class(
     });
 
     // Рекурсивно обходим тело класса, передавая имя класса
-    if let Some(body_node) = find_child_by_field(node, "body")
-        .or_else(|| find_child_by_kind(node, "block"))
+    if let Some(body_node) =
+        find_child_by_field(node, "body").or_else(|| find_child_by_kind(node, "block"))
     {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
@@ -379,7 +389,8 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext, is_from: bool) 
     } else {
         // from os.path import join, exists
         // from django.db import models as db_models
-        let module = node.child_by_field_name("module_name")
+        let module = node
+            .child_by_field_name("module_name")
             .map(|n| node_text(n, source).to_string());
 
         // Импортируемые имена
@@ -408,7 +419,8 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext, is_from: bool) 
                     let name_node = find_child_by_kind(child, "dotted_name")
                         .or_else(|| find_child_by_kind(child, "identifier"));
                     let name = name_node.map(|n| node_text(n, source).to_string());
-                    let alias = child.child_by_field_name("alias")
+                    let alias = child
+                        .child_by_field_name("alias")
                         .map(|n| node_text(n, source).to_string());
                     ctx.imports.push(ParsedImport {
                         module: module.clone(),
@@ -459,7 +471,11 @@ fn visit_call(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Opt
     // Caller: имя ближайшей функции-контейнера или "<module>"
     let caller = current_func.unwrap_or("<module>").to_string();
 
-    ctx.calls.push(ParsedCall { caller, callee, line });
+    ctx.calls.push(ParsedCall {
+        caller,
+        callee,
+        line,
+    });
 }
 
 /// Обработать присваивание переменной на уровне модуля
@@ -468,8 +484,7 @@ fn visit_assignment(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let line = node.start_position().row + 1;
 
     // Левая часть: поле left или первый дочерний узел
-    let name_node = node.child_by_field_name("left")
-        .or_else(|| node.child(0));
+    let name_node = node.child_by_field_name("left").or_else(|| node.child(0));
     let name = match name_node {
         Some(n) => {
             let text = node_text(n, source).to_string();
@@ -482,7 +497,8 @@ fn visit_assignment(node: tree_sitter::Node, ctx: &mut VisitContext) {
     };
 
     // Правая часть: поле right или третий дочерний элемент
-    let value = node.child_by_field_name("right")
+    let value = node
+        .child_by_field_name("right")
         .or_else(|| {
             // assignment: left "=" right — right это child(2)
             node.child(2)

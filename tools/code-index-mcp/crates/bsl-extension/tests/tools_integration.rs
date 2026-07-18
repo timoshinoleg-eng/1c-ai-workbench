@@ -43,11 +43,7 @@ fn fresh_storage() -> (TempDir, Arc<StoragePool>) {
 /// для event-based cache invalidation. Тесты проверяют поле `_meta` отдельно
 /// (must exist и быть массивом), а основной result отдают наружу как раньше —
 /// чтобы сохранить совместимость существующих assert'ов по `res["..."]`.
-async fn run_tool(
-    tool: &dyn IndexTool,
-    storage: &Arc<StoragePool>,
-    args: Value,
-) -> Value {
+async fn run_tool(tool: &dyn IndexTool, storage: &Arc<StoragePool>, args: Value) -> Value {
     let ctx = ToolContext {
         repo: REPO,
         root_path: None,
@@ -73,7 +69,13 @@ async fn get_object_structure_returns_existing() {
             .execute(
                 "INSERT INTO metadata_objects (repo, full_name, meta_type, name, synonym) \
                  VALUES (?, ?, ?, ?, ?)",
-                params![REPO, "Catalog.Контрагенты", "Catalog", "Контрагенты", "Контрагенты"],
+                params![
+                    REPO,
+                    "Catalog.Контрагенты",
+                    "Catalog",
+                    "Контрагенты",
+                    "Контрагенты"
+                ],
             )
             .unwrap();
     }
@@ -154,7 +156,11 @@ async fn get_object_structure_batch_full_names() {
     let results = res["results"]
         .as_array()
         .expect("массовый режим должен вернуть массив results");
-    assert_eq!(results.len(), 3, "три запрошенных объекта — три результата по порядку");
+    assert_eq!(
+        results.len(),
+        3,
+        "три запрошенных объекта — три результата по порядку"
+    );
     assert_eq!(results[0]["meta_type"].as_str(), Some("Catalog"));
     assert_eq!(results[0]["name"].as_str(), Some("Контрагенты"));
     assert_eq!(results[1]["meta_type"].as_str(), Some("Document"));
@@ -176,7 +182,13 @@ async fn get_object_structure_batch_non_string_element() {
             .execute(
                 "INSERT INTO metadata_objects (repo, full_name, meta_type, name, synonym) \
                  VALUES (?, ?, ?, ?, ?)",
-                params![REPO, "Catalog.Контрагенты", "Catalog", "Контрагенты", "Контрагенты"],
+                params![
+                    REPO,
+                    "Catalog.Контрагенты",
+                    "Catalog",
+                    "Контрагенты",
+                    "Контрагенты"
+                ],
             )
             .unwrap();
     }
@@ -213,7 +225,9 @@ async fn get_object_structure_batch_empty_list() {
         serde_json::json!({"repo": REPO, "full_names": []}),
     )
     .await;
-    let results = res["results"].as_array().expect("пустой батч → пустой results");
+    let results = res["results"]
+        .as_array()
+        .expect("пустой батч → пустой results");
     assert!(results.is_empty());
 }
 
@@ -234,7 +248,12 @@ async fn get_form_handlers_returns_array() {
             .execute(
                 "INSERT INTO metadata_forms (repo, owner_full_name, form_name, handlers_json) \
                  VALUES (?, ?, ?, ?)",
-                params![REPO, "Documents.Реализация", "ФормаДокумента", handlers_json],
+                params![
+                    REPO,
+                    "Documents.Реализация",
+                    "ФормаДокумента",
+                    handlers_json
+                ],
             )
             .unwrap();
     }
@@ -304,7 +323,10 @@ async fn get_form_handlers_unknown_form_lists_available() {
         }),
     )
     .await;
-    assert!(res["error"].as_str().unwrap_or("").contains("form not found"));
+    assert!(res["error"]
+        .as_str()
+        .unwrap_or("")
+        .contains("form not found"));
     let available: Vec<&str> = res["available_forms"]
         .as_array()
         .expect("available_forms — массив")
@@ -324,7 +346,10 @@ async fn get_form_handlers_unknown_form_lists_available() {
         }),
     )
     .await;
-    assert!(res2["error"].as_str().unwrap_or("").contains("form not found"));
+    assert!(res2["error"]
+        .as_str()
+        .unwrap_or("")
+        .contains("form not found"));
     assert!(res2["hint"].as_str().unwrap_or("").contains("Document.X"));
     assert!(res2["available_forms"].is_null());
 }
@@ -412,7 +437,11 @@ async fn get_event_subscriptions_filters_by_source() {
         serde_json::json!({"repo": REPO, "source": "Document.ЗаказКлиента"}),
     )
     .await;
-    assert_eq!(res["count"].as_u64(), Some(2), "ЗаказКлиента в двух подписках");
+    assert_eq!(
+        res["count"].as_u64(),
+        Some(2),
+        "ЗаказКлиента в двух подписках"
+    );
     assert_eq!(res["total"].as_u64(), Some(2));
 
     // Короткое имя (без типа) — тот же результат, регистр игнорируется.
@@ -444,7 +473,11 @@ async fn get_event_subscriptions_rejects_unknown_param() {
     )
     .await;
     let err = res["error"].as_str().unwrap_or("");
-    assert!(err.contains("object"), "ошибка называет неизвестный параметр: {}", err);
+    assert!(
+        err.contains("object"),
+        "ошибка называет неизвестный параметр: {}",
+        err
+    );
     assert!(
         res["hint"].as_str().unwrap_or("").contains("source"),
         "hint перечисляет допустимые фильтры"
@@ -498,7 +531,11 @@ async fn find_path_walks_two_hops() {
         serde_json::json!({"repo": REPO, "from": "A", "to": "C", "max_depth": 3}),
     )
     .await;
-    assert_eq!(res["found"].as_bool(), Some(true), "путь A→B→C должен находиться");
+    assert_eq!(
+        res["found"].as_bool(),
+        Some(true),
+        "путь A→B→C должен находиться"
+    );
     let path = res["path"].as_array().unwrap();
     assert_eq!(path.len(), 2);
 }
@@ -554,14 +591,23 @@ async fn seed_enrichment(storage: &Arc<StoragePool>) {
     let s = storage.get().await.unwrap();
     let conn = s.conn();
     for (proc_key, terms) in &[
-        ("Расчёт.Старт",         "запуск, инициализация, проведение"),
-        ("Продажи.СоздатьЗаказ", "товары, склад, заказ клиента, скидки"),
+        ("Расчёт.Старт", "запуск, инициализация, проведение"),
+        (
+            "Продажи.СоздатьЗаказ",
+            "товары, склад, заказ клиента, скидки",
+        ),
         ("Логирование.Записать", "журнал, аудит, ошибка, отладка"),
     ] {
         conn.execute(
             "INSERT INTO procedure_enrichment (repo, proc_key, terms, signature, updated_at) \
              VALUES (?, ?, ?, ?, ?)",
-            params![REPO, proc_key, terms, "openai_compatible:claude-haiku-4.5", 0i64],
+            params![
+                REPO,
+                proc_key,
+                terms,
+                "openai_compatible:claude-haiku-4.5",
+                0i64
+            ],
         )
         .unwrap();
     }
@@ -581,7 +627,10 @@ async fn search_terms_multiword_rewritten_to_or() {
         serde_json::json!({"repo": REPO, "query": "склад журнал недостижимое"}),
     )
     .await;
-    assert_eq!(res["fts_query"].as_str(), Some("\"склад\" OR \"журнал\" OR \"недостижимое\""));
+    assert_eq!(
+        res["fts_query"].as_str(),
+        Some("\"склад\" OR \"журнал\" OR \"недостижимое\"")
+    );
     let keys: Vec<&str> = res["results"]
         .as_array()
         .unwrap()
@@ -615,7 +664,10 @@ async fn search_terms_finds_by_simple_word() {
     .await;
     let results = res["results"].as_array().expect("results — массив");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["proc_key"].as_str(), Some("Продажи.СоздатьЗаказ"));
+    assert_eq!(
+        results[0]["proc_key"].as_str(),
+        Some("Продажи.СоздатьЗаказ")
+    );
     assert!(results[0]["terms"].as_str().unwrap().contains("склад"));
     assert!(results[0]["signature"].as_str().is_some());
     // BM25 ранжирование возвращает отрицательные числа (меньше = лучше).
@@ -653,7 +705,10 @@ async fn search_terms_supports_and_or() {
     .await;
     let and_results = res_and["results"].as_array().unwrap();
     assert_eq!(and_results.len(), 1);
-    assert_eq!(and_results[0]["proc_key"].as_str(), Some("Продажи.СоздатьЗаказ"));
+    assert_eq!(
+        and_results[0]["proc_key"].as_str(),
+        Some("Продажи.СоздатьЗаказ")
+    );
 }
 
 #[tokio::test]
@@ -668,7 +723,10 @@ async fn search_terms_returns_empty_for_unknown_word() {
     )
     .await;
     let results = res["results"].as_array().unwrap();
-    assert!(results.is_empty(), "слово, которого нет в termах, не должно совпадать");
+    assert!(
+        results.is_empty(),
+        "слово, которого нет в termах, не должно совпадать"
+    );
 }
 
 #[tokio::test]
@@ -692,7 +750,10 @@ async fn search_terms_filters_by_repo() {
     )
     .await;
     let results = res["results"].as_array().unwrap();
-    assert!(results.is_empty(), "запись из другого repo не должна находиться");
+    assert!(
+        results.is_empty(),
+        "запись из другого repo не должна находиться"
+    );
 }
 
 #[tokio::test]
@@ -704,7 +765,10 @@ async fn search_terms_empty_query_returns_error() {
         serde_json::json!({"repo": REPO, "query": "   "}),
     )
     .await;
-    assert!(res["error"].as_str().is_some(), "пустой query должен возвращать error");
+    assert!(
+        res["error"].as_str().is_some(),
+        "пустой query должен возвращать error"
+    );
 }
 
 #[tokio::test]

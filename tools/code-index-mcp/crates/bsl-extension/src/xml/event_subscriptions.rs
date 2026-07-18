@@ -274,11 +274,17 @@ mod tests {
     fn event_to_russian_maps_known_and_keeps_unknown() {
         assert_eq!(event_to_russian("BeforeWrite"), "ПередЗаписью");
         assert_eq!(event_to_russian("Posting"), "ОбработкаПроведения");
-        assert_eq!(event_to_russian("UndoPosting"), "ОбработкаУдаленияПроведения");
+        assert_eq!(
+            event_to_russian("UndoPosting"),
+            "ОбработкаУдаленияПроведения"
+        );
         assert_eq!(event_to_russian("OnSetNewCode"), "ПриУстановкеНовогоКода");
         // уже-русское — без изменений
         assert_eq!(event_to_russian("ПриЗаписи"), "ПриЗаписи");
         // неизвестное — без изменений
-        assert_eq!(event_to_russian("СовсемДругоеСобытие"), "СовсемДругоеСобытие");
+        assert_eq!(
+            event_to_russian("СовсемДругоеСобытие"),
+            "СовсемДругоеСобытие"
+        );
     }
 }

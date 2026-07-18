@@ -78,10 +78,21 @@ mod tests {
     #[test]
     fn build_includes_loopback_and_me_and_paths() {
         let cfg = ServeFileConfig {
-            me: MeSection { ip: "192.0.2.10".to_string(), token: None },
+            me: MeSection {
+                ip: "192.0.2.10".to_string(),
+                token: None,
+            },
             paths: vec![
-                ServePathEntry { alias: "ut".to_string(), ip: "192.0.2.50".to_string(), port: None },
-                ServePathEntry { alias: "dev".to_string(), ip: "192.0.2.10".to_string(), port: None },
+                ServePathEntry {
+                    alias: "ut".to_string(),
+                    ip: "192.0.2.50".to_string(),
+                    port: None,
+                },
+                ServePathEntry {
+                    alias: "dev".to_string(),
+                    ip: "192.0.2.10".to_string(),
+                    port: None,
+                },
             ],
             pool: Default::default(),
         };
@@ -99,10 +110,15 @@ mod tests {
         // validate() в config.rs ловит невалидные IP до этого момента —
         // build не должен паниковать на edge-случае.
         let cfg = ServeFileConfig {
-            me: MeSection { ip: "192.0.2.10".to_string(), token: None },
-            paths: vec![
-                ServePathEntry { alias: "ut".to_string(), ip: "not-ip".to_string(), port: None },
-            ],
+            me: MeSection {
+                ip: "192.0.2.10".to_string(),
+                token: None,
+            },
+            paths: vec![ServePathEntry {
+                alias: "ut".to_string(),
+                ip: "not-ip".to_string(),
+                port: None,
+            }],
             pool: Default::default(),
         };
         let set = build(&cfg);

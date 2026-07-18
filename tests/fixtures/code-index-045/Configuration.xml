@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MetaDataObject>
+  <Configuration uuid="11111111-1111-1111-1111-111111111111">
+    <Properties>
+      <Name>GoldenPilot</Name>
+    </Properties>
+    <ChildObjects>
+      <CommonModule>ПилотИндекса</CommonModule>
+    </ChildObjects>
+  </Configuration>
+</MetaDataObject>
