@@ -37,11 +37,18 @@ function Invoke-HostPython {
   & $PythonSpec.Command @($PythonSpec.Args + $Arguments)
 }
 
-function Install-Requirements([string]$PythonExe, [string]$RequirementsPath) {
-  if (-not (Test-Path -LiteralPath $RequirementsPath)) { return }
-  Write-Step "Installing requirements: $RequirementsPath"
-  & $PythonExe -m pip install --disable-pip-version-check -r $RequirementsPath
-  if ($LASTEXITCODE -ne 0) { throw "pip install failed: $RequirementsPath" }
+function Install-Requirements([string]$PythonExe, [string[]]$RequirementsPaths) {
+  $installArgs = @("-m", "pip", "install", "--disable-pip-version-check")
+  $existingRequirements = @()
+  foreach ($requirementsPath in $RequirementsPaths) {
+    if (-not (Test-Path -LiteralPath $requirementsPath -PathType Leaf)) { continue }
+    $existingRequirements += $requirementsPath
+    $installArgs += @("-r", $requirementsPath)
+  }
+  if ($existingRequirements.Count -eq 0) { throw "No Python requirements files were found." }
+  Write-Step "Installing requirements in one resolver pass: $($existingRequirements -join ', ')"
+  & $PythonExe @installArgs
+  if ($LASTEXITCODE -ne 0) { throw "pip install failed for one or more requirements files." }
 }
 
 function Ensure-BslIndexer {
@@ -100,10 +107,12 @@ Write-Step "Upgrading pip"
 & $venvPython -m pip install --disable-pip-version-check --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
 
-Install-Requirements -PythonExe $venvPython -RequirementsPath (Join-Path $root "requirements.txt")
-Install-Requirements -PythonExe $venvPython -RequirementsPath (Join-Path $root "tools\skills-bridge\requirements.txt")
-Install-Requirements -PythonExe $venvPython -RequirementsPath (Join-Path $root "tools\ibcmd-bridge\requirements.txt")
-Install-Requirements -PythonExe $venvPython -RequirementsPath (Join-Path $root "tools\prompt-gallery\requirements.txt")
+Install-Requirements -PythonExe $venvPython -RequirementsPaths @(
+  (Join-Path $root "requirements.txt"),
+  (Join-Path $root "tools\skills-bridge\requirements.txt"),
+  (Join-Path $root "tools\ibcmd-bridge\requirements.txt"),
+  (Join-Path $root "tools\prompt-gallery\requirements.txt")
+)
 
 foreach ($pkg in @("fastmcp", "pydantic", "httpx", "lxml", "pytest")) {
   & $venvPython -c "import $pkg; print('$pkg OK')" 2>&1 | ForEach-Object { Write-Host "  $_" }

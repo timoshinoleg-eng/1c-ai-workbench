@@ -87,6 +87,30 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Parse all PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @('START_HERE.ps1') +
+            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $file).Path
+            $content = [System.IO.File]::ReadAllText($path)
+            if ($content.Contains([char]0xfffd)) {
+              throw "PowerShell source contains an invalid replacement character: $path"
+            }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors) {
+              $messages = $errors | ForEach-Object { $_.Message }
+              throw "PowerShell parser failed for $path`: $($messages -join '; ')"
+            }
+          }
       - name: Run smoke scripts
         shell: pwsh
         run: |
