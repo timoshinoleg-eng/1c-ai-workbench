@@ -1,4 +1,8 @@
 #define AppName "1C AI Workbench"
+#define AppIdValue GetEnv("APP_ID")
+#if AppIdValue == ""
+  #define AppIdValue "8F3E09B8-5D2F-4B98-8EA4-1C0A1F0B1C01"
+#endif
 #define AppVersion GetEnv("APP_VERSION")
 #if AppVersion == ""
   #define AppVersion "0.1.0"
@@ -15,9 +19,10 @@
 #if OutputRoot == ""
   #define OutputRoot "..\dist\installer"
 #endif
+#define OfflineWheelhouse GetEnv("OFFLINE_WHEELHOUSE")
 
 [Setup]
-AppId={{8F3E09B8-5D2F-4B98-8EA4-1C0A1F0B1C01}
+AppId={{{#AppIdValue}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=1C AI Workbench
@@ -56,6 +61,8 @@ Source: "{#SourceRoot}\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\opencode.jsonc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\requirements-production.in"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceRoot}\requirements-production.lock"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\SECURITY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\START_HERE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\START_HERE.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -79,10 +86,16 @@ Source: "{#SourceRoot}\tools\cc-1c-skills\.claude\skills\form-validate\*"; DestD
 Source: "{#SourceRoot}\tools\cc-1c-skills\.claude\skills\meta-validate\*"; DestDir: "{app}\tools\cc-1c-skills\.claude\skills\meta-validate"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#SourceRoot}\tools\cc-1c-skills\.claude\skills\mxl-info\*"; DestDir: "{app}\tools\cc-1c-skills\.claude\skills\mxl-info"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#SourceRoot}\tools\cc-1c-skills\.claude\skills\subsystem-info\*"; DestDir: "{app}\tools\cc-1c-skills\.claude\skills\subsystem-info"; Flags: recursesubdirs createallsubdirs ignoreversion
+#if OfflineWheelhouse != ""
+Source: "{#OfflineWheelhouse}\*"; DestDir: "{app}\offline-wheelhouse"; Flags: recursesubdirs createallsubdirs ignoreversion
+#endif
 
 [Dirs]
 Name: "{app}\generated"; Permissions: users-modify
 Name: "{app}\logs"; Permissions: users-modify
+
+[Registry]
+Root: HKCU; Subkey: "Software\1C AI Workbench\Installations\{#AppIdValue}"; ValueType: string; ValueName: "InstallerVersion"; ValueData: "{#AppVersionNumeric}"; Flags: uninsdeletekey
 
 [Icons]
 Name: "{group}\1C AI Workbench"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\START_HERE.ps1"" -WorkbenchRoot ""{app}"""; WorkingDir: "{app}"
@@ -92,3 +105,40 @@ Name: "{autodesktop}\1C AI Workbench"; Filename: "{sys}\WindowsPowerShell\v1.0\p
 
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\START_HERE.ps1"" -WorkbenchRoot ""{app}"""; WorkingDir: "{app}"; Description: "Launch 1C AI Workbench"; Flags: postinstall nowait skipifsilent unchecked
+
+[UninstallDelete]
+; Runtime caches are reproducible and safe to delete. User-created indexes,
+; reports and logs under generated/logs are deliberately preserved.
+Type: filesandordirs; Name: "{app}\.venv"
+Type: filesandordirs; Name: "{app}\tools\skills-bridge\__pycache__"
+Type: filesandordirs; Name: "{app}\tools\ibcmd-bridge\__pycache__"
+Type: filesandordirs; Name: "{app}\tools\prompt-gallery\__pycache__"
+Type: filesandordirs; Name: "{app}\tools\help-index-mcp\__pycache__"
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  InstalledVersionText: String;
+  InstalledVersion: Int64;
+  CandidateVersion: Int64;
+  VersionKey: String;
+begin
+  Result := True;
+  VersionKey := 'Software\1C AI Workbench\Installations\{#AppIdValue}';
+  if RegQueryStringValue(HKCU, VersionKey, 'InstallerVersion', InstalledVersionText) and
+     StrToVersion(InstalledVersionText, InstalledVersion) and
+     StrToVersion('{#AppVersionNumeric}', CandidateVersion) and
+     (ComparePackedVersion(CandidateVersion, InstalledVersion) < 0) and
+     (ExpandConstant('{param:ALLOWDOWNGRADE|0}') <> '1') then
+  begin
+    SuppressibleMsgBox(
+      'A newer 1C AI Workbench version is already installed. ' +
+      'Downgrade is blocked to protect the managed runtime. ' +
+      'Use /ALLOWDOWNGRADE=1 only for an approved rollback.',
+      mbError,
+      MB_OK,
+      IDOK
+    );
+    Result := False;
+  end;
+end;

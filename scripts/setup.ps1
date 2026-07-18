@@ -3,7 +3,9 @@ param(
   [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
   [string]$ReleaseTag = "v0.9.0-pilot",
   [switch]$RecreateVenv,
-  [switch]$SkipBinaryDownload
+  [switch]$SkipBinaryDownload,
+  [switch]$Offline,
+  [string]$Wheelhouse
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,6 +15,10 @@ $venvDir = Join-Path $root ".venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $releaseDir = Join-Path $root "tools\code-index-mcp\target\release"
 $binaryPath = Join-Path $releaseDir "bsl-indexer.exe"
+$productionLock = Join-Path $root "requirements-production.lock"
+if ([string]::IsNullOrWhiteSpace($Wheelhouse)) {
+  $Wheelhouse = Join-Path $root "offline-wheelhouse"
+}
 $expectedIndexerSha256 = "f4a0f19d5ff0947c5e1aaeccf674100aadd38bcf8d17c5085faee25c2b822fa5"
 $indexerUrl = "https://github.com/timoshinoleg-eng/1c-ai-workbench/releases/download/$ReleaseTag/bsl-indexer.exe"
 
@@ -37,18 +43,69 @@ function Invoke-HostPython {
   & $PythonSpec.Command @($PythonSpec.Args + $Arguments)
 }
 
-function Install-Requirements([string]$PythonExe, [string[]]$RequirementsPaths) {
-  $installArgs = @("-m", "pip", "install", "--disable-pip-version-check")
-  $existingRequirements = @()
-  foreach ($requirementsPath in $RequirementsPaths) {
-    if (-not (Test-Path -LiteralPath $requirementsPath -PathType Leaf)) { continue }
-    $existingRequirements += $requirementsPath
-    $installArgs += @("-r", $requirementsPath)
+function Assert-OfflineHostPython([hashtable]$PythonSpec) {
+  $probe = Invoke-HostPython -PythonSpec $PythonSpec -Arguments @(
+    "-c",
+    "import json, struct, sys; print(json.dumps({'major': sys.version_info.major, 'minor': sys.version_info.minor, 'bits': struct.calcsize('P') * 8, 'platform': sys.platform}))"
+  )
+  if ($LASTEXITCODE -ne 0) { throw "Unable to inspect host Python for offline setup." }
+  $info = $probe | ConvertFrom-Json
+  if ($info.major -ne 3 -or $info.minor -ne 11 -or $info.bits -ne 64 -or $info.platform -ne "win32") {
+    throw "Offline setup requires 64-bit CPython 3.11 on Windows; got Python $($info.major).$($info.minor), $($info.bits)-bit, $($info.platform)."
   }
-  if ($existingRequirements.Count -eq 0) { throw "No Python requirements files were found." }
-  Write-Step "Installing requirements in one resolver pass: $($existingRequirements -join ', ')"
+}
+
+function Assert-Wheelhouse([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+    throw "Offline wheelhouse not found: $Path"
+  }
+  $manifest = Join-Path $Path "SHA256SUMS.txt"
+  if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
+    throw "Offline wheelhouse checksum manifest not found: $manifest"
+  }
+  $manifestNames = @()
+  foreach ($line in Get-Content -LiteralPath $manifest) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line -notmatch '^(?<hash>[0-9a-fA-F]{64})\s{2}(?<name>[^\\/]+)$') {
+      throw "Invalid wheelhouse checksum line: $line"
+    }
+    $wheel = Join-Path $Path $Matches.name
+    $manifestNames += $Matches.name
+    if (-not (Test-Path -LiteralPath $wheel -PathType Leaf)) {
+      throw "Wheelhouse file listed in manifest is missing: $wheel"
+    }
+    $actual = (Get-FileHash -LiteralPath $wheel -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $Matches.hash.ToLowerInvariant()) {
+      throw "Wheelhouse checksum mismatch for $($Matches.name)"
+    }
+  }
+  $actualNames = @(
+    Get-ChildItem -LiteralPath $Path -File |
+      Where-Object Name -ne "SHA256SUMS.txt" |
+      ForEach-Object Name
+  )
+  if (@(Compare-Object $manifestNames $actualNames).Count -ne 0) {
+    throw "Offline wheelhouse manifest does not exactly cover its files: $Path"
+  }
+}
+
+function Install-Requirements([string]$PythonExe) {
+  if (-not (Test-Path -LiteralPath $productionLock -PathType Leaf)) {
+    throw "Production requirements lock not found: $productionLock"
+  }
+  $installArgs = @(
+    "-m", "pip", "install", "--disable-pip-version-check",
+    "--require-hashes", "-r", $productionLock
+  )
+  if ($Offline) {
+    Assert-Wheelhouse $Wheelhouse
+    $installArgs += @("--no-index", "--find-links", $Wheelhouse)
+    Write-Step "Installing locked requirements from verified offline wheelhouse: $Wheelhouse"
+  } else {
+    Write-Step "Installing locked production requirements from package index"
+  }
   & $PythonExe @installArgs
-  if ($LASTEXITCODE -ne 0) { throw "pip install failed for one or more requirements files." }
+  if ($LASTEXITCODE -ne 0) { throw "pip install failed for production requirements lock." }
 }
 
 function Ensure-BslIndexer {
@@ -88,6 +145,7 @@ Write-Host "Root: $root"
 
 $pythonSpec = Find-Python
 Write-Ok "Host Python: $($pythonSpec.Command) $($pythonSpec.Args -join ' ')"
+if ($Offline) { Assert-OfflineHostPython $pythonSpec }
 
 if ($RecreateVenv -and (Test-Path -LiteralPath $venvDir)) {
   Write-Step "Removing existing .venv"
@@ -103,18 +161,17 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 if (-not (Test-Path -LiteralPath $venvPython)) { throw ".venv creation failed: $venvPython" }
 Write-Ok "Using .venv: $venvPython"
 
-Write-Step "Upgrading pip"
-& $venvPython -m pip install --disable-pip-version-check --upgrade pip
-if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+if ($Offline) {
+  Write-Step "Offline mode: pip upgrade and all network access are disabled."
+} else {
+  Write-Step "Upgrading pip"
+  & $venvPython -m pip install --disable-pip-version-check --upgrade pip
+  if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+}
 
-Install-Requirements -PythonExe $venvPython -RequirementsPaths @(
-  (Join-Path $root "requirements.txt"),
-  (Join-Path $root "tools\skills-bridge\requirements.txt"),
-  (Join-Path $root "tools\ibcmd-bridge\requirements.txt"),
-  (Join-Path $root "tools\prompt-gallery\requirements.txt")
-)
+Install-Requirements -PythonExe $venvPython
 
-foreach ($pkg in @("fastmcp", "pydantic", "httpx", "lxml", "pytest")) {
+foreach ($pkg in @("fastmcp", "pydantic", "httpx", "lxml")) {
   & $venvPython -c "import $pkg; print('$pkg OK')" 2>&1 | ForEach-Object { Write-Host "  $_" }
   if ($LASTEXITCODE -ne 0) { throw "$pkg import failed" }
 }

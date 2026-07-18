@@ -1,24 +1,11 @@
 name: release
 
-# Triggers manually. The release pipeline builds the public bsl-indexer.exe
-# asset and uploads it plus a SHA256SUMS.txt to the GitHub Release for the tag.
-#
-# IMPORTANT: this workflow is intentionally at the superproject root, not
-# under tools/code-index-mcp/.github/workflows/. GitHub Actions only
-# triggers on workflows that live in the .github/ directory of the repo
-# being tagged; vendored release.yml files inside subtrees are inert
-# when the superproject is what gets tagged.
-#
-# See tools/SUBTREE.md for the vendoring model and the gap this
-# workflow closes.
-
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to publish (e.g. v0.1.0). Leave empty to publish HEAD.'
-        required: false
-        default: ''
+        description: "Existing release tag to build and publish (for example v0.9.0)"
+        required: true
 
 permissions:
   contents: write
@@ -27,40 +14,22 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   RUST_LOG_STYLE: never
+  RELEASE_TAG: ${{ inputs.tag }}
 
 jobs:
-  build-bsl-indexer:
-    name: Build bsl-indexer.exe
+  signed-windows-release:
+    name: Signed Windows production release
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          submodules: recursive
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
-      - name: Parse all PowerShell entrypoints
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $files = @('START_HERE.ps1') +
-            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
-          foreach ($file in $files) {
-            $tokens = $null
-            $errors = $null
-            $path = (Resolve-Path $file).Path
-            $content = [System.IO.File]::ReadAllText($path)
-            if ($content.Contains([char]0xfffd)) {
-              throw "PowerShell source contains an invalid replacement character: $path"
-            }
-            $null = [System.Management.Automation.Language.Parser]::ParseFile(
-              $path,
-              [ref]$tokens,
-              [ref]$errors
-            )
-            if ($errors) {
-              $messages = $errors | ForEach-Object { $_.Message }
-              throw "PowerShell parser failed for $path`: $($messages -join '; ')"
-            }
-          }
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -70,40 +39,129 @@ jobs:
         with:
           workspaces: tools/code-index-mcp
 
-      - name: Build release binary
+      - name: Verify tag and release inputs
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
+            throw "Release tag must be semantic and start with v: $tag"
+          }
+          $tagCommit = (git rev-list -n 1 $tag).Trim()
+          $headCommit = (git rev-parse HEAD).Trim()
+          if ($tagCommit -ne $headCommit) { throw "Checked-out HEAD does not match tag $tag" }
+
+      - name: Parse all PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $files = @('START_HERE.ps1') +
+            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $file).Path
+            $content = [System.IO.File]::ReadAllText($path)
+            if ($content.Contains([char]0xfffd)) { throw "Invalid replacement character: $path" }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path, [ref]$tokens, [ref]$errors
+            )
+            if ($errors) { throw "PowerShell parser failed for $path" }
+          }
+
+      - name: Build and smoke-test release indexer
         working-directory: tools/code-index-mcp
         shell: pwsh
         run: |
           cargo build --release -p bsl-indexer --features enrichment
-          $exe = "target\release\bsl-indexer.exe"
-          if (-not (Test-Path $exe)) { throw "bsl-indexer.exe missing after build" }
-          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
-          Write-Host "Built $exe ($size MB)"
-
-      - name: Smoke test the built binary
-        shell: pwsh
-        run: |
-          $exe = "tools\code-index-mcp\target\release\bsl-indexer.exe"
+          $exe = 'target\release\bsl-indexer.exe'
+          if (-not (Test-Path $exe)) { throw 'bsl-indexer.exe missing after build' }
           & $exe --help | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe --help exited with $LASTEXITCODE" }
-          Write-Host "OK: bsl-indexer.exe --help exits 0"
+          if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe smoke failed: $LASTEXITCODE" }
+          $sum = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sum  bsl-indexer.exe" | Set-Content -Encoding ascii 'target\release\bsl-indexer.exe.sha256'
 
-      - name: Generate checksum
+      - name: Install pinned Inno Setup compiler
         shell: pwsh
-        working-directory: tools/code-index-mcp/target/release
         run: |
-          $exe = "bsl-indexer.exe"
-          $sum = (Get-FileHash $exe -Algorithm SHA256).Hash
-          "$sum  $exe" | Out-File -Encoding UTF8 bsl-indexer.exe.SHA256SUMS.txt
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.3'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Inno Setup archive checksum mismatch: $actual"
+          }
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup Authenticode verification failed: $($signature.Status)"
+          }
+          $process = Start-Process $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$installRoot`""
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "INNO_COMPILER=$installRoot\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          generate_release_notes: true
-          files: |
-            tools/code-index-mcp/target/release/bsl-indexer.exe
-            tools/code-index-mcp/target/release/bsl-indexer.exe.SHA256SUMS.txt
-          fail_on_unmatched_files: true
+      - name: Prepare verified offline wheelhouse
+        shell: pwsh
+        run: .\scripts\23_prepare_offline_wheelhouse.ps1
+
+      - name: Import production Authenticode certificate
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_BASE64 }}
+          SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PFX_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:SIGNING_PFX_PASSWORD)) {
+            throw 'Production release requires WINDOWS_SIGNING_CERT_PFX_BASE64 and WINDOWS_SIGNING_CERT_PFX_PASSWORD.'
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP '1c-ai-workbench-signing.pfx'
+          [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_PFX_BASE64))
+          $password = ConvertTo-SecureString $env:SIGNING_PFX_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password
+          if (-not $certificate.HasPrivateKey) { throw 'Imported Authenticode certificate has no private key.' }
+          "SIGNING_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SIGNING_PFX_PATH=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build signed offline installer
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          .\scripts\19_build_windows_installer.ps1 `
+            -AppVersion $version `
+            -OfflineWheelhouse '.\dist\offline-wheelhouse' `
+            -RequireOfflineWheelhouse `
+            -InnoCompiler $env:INNO_COMPILER `
+            -SignCertificateThumbprint $env:SIGNING_THUMBPRINT `
+            -RequireSignature
+
+      - name: Exercise signed installer offline, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $installer = ".\dist\installer\1c-ai-workbench-setup-$version.exe"
+          .\scripts\24_test_windows_installer.ps1 -InstallerPath $installer -RequireSignature
+
+      - name: Publish immutable GitHub release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $version = $tag.Substring(1)
+          gh release create $tag `
+            ".\tools\code-index-mcp\target\release\bsl-indexer.exe" `
+            ".\tools\code-index-mcp\target\release\bsl-indexer.exe.sha256" `
+            ".\dist\installer\1c-ai-workbench-setup-$version.exe" `
+            ".\dist\installer\1c-ai-workbench-setup-$version.exe.sha256" `
+            --verify-tag --generate-notes --title "1C AI Workbench $tag"
+
+      - name: Remove signing material
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:SIGNING_THUMBPRINT -match '^[0-9A-Fa-f]{40}$') {
+            $certificatePath = "Cert:\CurrentUser\My\$($env:SIGNING_THUMBPRINT)"
+            if (Test-Path $certificatePath) { Remove-Item -LiteralPath $certificatePath -Force }
+          }
+          if ($env:SIGNING_PFX_PATH -and (Test-Path -LiteralPath $env:SIGNING_PFX_PATH)) {
+            Remove-Item -LiteralPath $env:SIGNING_PFX_PATH -Force
+          }

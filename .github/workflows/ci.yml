@@ -177,6 +177,79 @@ jobs:
         if: always()
         run: .\scripts\18_check_prompt_gallery.ps1
 
+  windows-installer:
+    name: Windows installer offline, upgrade & uninstall
+    runs-on: windows-latest
+    needs: rust-build
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Download release indexer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bsl-indexer-windows-x64
+          path: tools/code-index-mcp/target/release
+      - name: Verify release indexer
+        shell: pwsh
+        run: |
+          $root = 'tools\code-index-mcp\target\release'
+          $expected = ((Get-Content -Raw "$root\bsl-indexer.exe.sha256") -split '\s+')[0]
+          $actual = (Get-FileHash "$root\bsl-indexer.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "bsl-indexer artifact checksum mismatch" }
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.3'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Inno Setup archive checksum mismatch: $actual"
+          }
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup Authenticode verification failed: $($signature.Status)"
+          }
+          $process = Start-Process $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$installRoot`""
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "INNO_COMPILER=$installRoot\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prepare verified offline wheelhouse
+        shell: pwsh
+        run: .\scripts\23_prepare_offline_wheelhouse.ps1
+      - name: Build isolated upgrade pair
+        shell: pwsh
+        run: |
+          $appId = 'D3D5126B-73C1-4D7D-8D83-5B11EDC0D2A6'
+          $common = @{
+            InstallerAppId = $appId
+            InnoCompiler = $env:INNO_COMPILER
+            OfflineWheelhouse = '.\dist\offline-wheelhouse'
+            RequireOfflineWheelhouse = $true
+          }
+          .\scripts\19_build_windows_installer.ps1 @common -AppVersion '0.9.0.1' -OutputDir '.\dist\installer-ci1'
+          .\scripts\19_build_windows_installer.ps1 @common -AppVersion '0.9.0.2' -OutputDir '.\dist\installer-ci2'
+      - name: Verify signature release gate is fail-closed
+        shell: pwsh
+        run: |
+          try {
+            .\scripts\19_build_windows_installer.ps1 -RequireSignature -InnoCompiler $env:INNO_COMPILER -OutputDir '.\dist\must-not-build'
+            throw 'RequireSignature unexpectedly accepted missing certificate material.'
+          } catch {
+            if ($_.Exception.Message -notmatch 'RequireSignature requires') { throw }
+            Write-Host 'OK: production signature gate rejects missing certificate material'
+          }
+      - name: Exercise offline setup, upgrade and uninstall
+        shell: pwsh
+        run: >-
+          .\scripts\24_test_windows_installer.ps1
+          -InstallerPath '.\dist\installer-ci1\1c-ai-workbench-setup-0.9.0.1.exe'
+          -UpgradeInstallerPath '.\dist\installer-ci2\1c-ai-workbench-setup-0.9.0.2.exe'
+
   license-check:
     name: License compliance (REUSE)
     runs-on: ubuntu-latest
