@@ -60,7 +60,7 @@ pub fn parse_config_dump_info_str(xml: &str) -> HashMap<String, String> {
                 let name = e.name();
                 let raw = name.as_ref();
                 let tag = std::str::from_utf8(raw).unwrap_or("");
-                let local = tag.split(':').last().unwrap_or(tag);
+                let local = tag.split(':').next_back().unwrap_or(tag);
                 if local != "Metadata" {
                     continue;
                 }

@@ -76,11 +76,11 @@ configs\README_MCP_CONFIGS.md
 .\scripts\06_healthcheck.ps1 -OpenReport
 ```
 
-2. Если индекс и MCP готовы:
+1. Если индекс и MCP готовы:
    - открыть `docs\OPENCODE_SETUP_RU.md` для opencode
    - или `docs\API_KEY_SETUP.md` для внешнего MCP-клиента, Cursor или VS Code
 
-3. Подключить MCP server:
+2. Подключить MCP server:
 
 ```text
 C:\1c-ai-workbench\tools\code-index-mcp\target\release\bsl-indexer.exe

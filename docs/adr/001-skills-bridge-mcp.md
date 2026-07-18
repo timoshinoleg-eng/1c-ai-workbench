@@ -8,6 +8,7 @@
 callable-интерфейс без live mode и без дублирования `code-index-mcp`.
 
 **Рассмотренные варианты:**
+
 1. Вариант A — вызывать оригинальные PowerShell/Python scripts из
    `cc-1c-skills` напрямую.
 2. Вариант B — написать FastMCP bridge, который читает `source-mirror`
@@ -24,12 +25,14 @@ callable-интерфейс без live mode и без дублирования 
 недоступен.
 
 **Последствия:**
+
 - Добавлен `tools/skills-bridge/` с 10 MCP tools.
 - Добавлен check script `scripts/16_check_skills_bridge.ps1`.
 - Добавлена integration card `docs/phase-a/integration-cards/skills-bridge.md`.
 - Добавлена optional MCP entry в `opencode.jsonc`.
 
 **Compliance с BORROWING_MAP:**
+
 - Есть ли заимствование? да, адаптация идей `cc-1c-skills`.
 - Если да — указана ли лицензия? да, MIT в `ATTRIBUTION.md` и integration card.
 - Нарушает ли границы? нет, код не копирует оригинальные scripts и работает

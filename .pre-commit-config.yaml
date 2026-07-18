@@ -3,7 +3,8 @@
 # Run on all files: pre-commit run --all-files
 # Update hook versions: pre-commit autoupdate
 
-# Exclude generated artifacts and vendored dependencies
+# Exclude generated artifacts and vendored dependencies. Vendored Rust is
+# covered by the dedicated rust-build CI job with its own upstream policy.
 exclude: |
   (?x)^(
     tests/.*|
@@ -14,7 +15,8 @@ exclude: |
     .*/target/.*|
     .*/__pycache__/.*|
     .*\.min\.(js|css)|
-    tools/cc-1c-skills/.*
+    tools/cc-1c-skills/.*|
+    tools/code-index-mcp/.*
   )$
 
 repos:
@@ -32,6 +34,9 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        # Several Windows PowerShell entrypoints carry encoding markers that
+        # this generic hook can corrupt. Their parser/U+FFFD gate runs in CI.
+        exclude: \.ps1$
       - id: check-yaml
         exclude: ^tools/cc-1c-skills/
       - id: check-json
@@ -41,6 +46,7 @@ repos:
         args: ["--maxkb=512"]
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: \.ps1$
 
   # ---- Python (advisory in v1.0; ruff catches real issues, manual stage
   #                  for stricter rules; E501 and inherited-code rules ignored) ----

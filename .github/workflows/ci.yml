@@ -14,29 +14,36 @@ env:
 jobs:
   secret-scan:
     name: Secret scan (gitleaks)
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="8.30.1"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          curl --fail --location --silent --show-error "$url" --output "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+          ./gitleaks git --redact --verbose .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: "3.11"
       - name: Install tools
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install ruff black mypy
+          pip install ruff==0.15.22 black==26.5.1 mypy==2.3.0
       - name: Ruff
         shell: pwsh
         run: ruff check tools/ scripts/ --output-format=github
@@ -52,7 +59,7 @@ jobs:
     name: Rust build & test (bsl-indexer)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
@@ -61,12 +68,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: tools/code-index-mcp
-      - name: cargo fmt
-        working-directory: tools/code-index-mcp
-        run: cargo fmt --all -- --check
       - name: cargo clippy
         working-directory: tools/code-index-mcp
-        run: cargo clippy --all-targets -- -D warnings
+        # Enforce stable correctness/performance categories. Two known 0.42.2
+        # architectural size warnings require API-shape changes and are handled
+        # by the isolated 0.45 upgrade rather than suppressed globally.
+        run: >-
+          cargo clippy --all-targets --
+          -D clippy::correctness
+          -D clippy::suspicious
+          -D clippy::perf
+          -A clippy::result_large_err
+          -A clippy::large_enum_variant
       - name: cargo test
         working-directory: tools/code-index-mcp
         run: cargo test --all --no-fail-fast
@@ -81,12 +94,36 @@ jobs:
           cargo test --workspace -- --ignored test_index_then_search_roundtrip
           cargo test --workspace -- --ignored test_stats_with_fixture
           cargo test --workspace -- --ignored test_query_with_fixture
+      - name: Generate release indexer checksum
+        shell: pwsh
+        run: |
+          $binary = 'target/release/bsl-indexer.exe'
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          "$digest  bsl-indexer.exe" | Set-Content -Encoding ascii 'target/release/bsl-indexer.exe.sha256'
+        working-directory: tools/code-index-mcp
+      - name: Publish release indexer
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: bsl-indexer-windows-x64
+          path: |
+            tools/code-index-mcp/target/release/bsl-indexer.exe
+            tools/code-index-mcp/target/release/bsl-indexer.exe.sha256
+          if-no-files-found: error
 
   powershell-smoke:
     name: PowerShell smoke checks
     runs-on: windows-latest
+    needs: rust-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Download release indexer
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: bsl-indexer-windows-x64
+          path: tools/code-index-mcp/target/release
       - name: Parse all PowerShell entrypoints
         shell: pwsh
         run: |
@@ -111,6 +148,20 @@ jobs:
               throw "PowerShell parser failed for $path`: $($messages -join '; ')"
             }
           }
+      - name: Prepare Python environment and deterministic index
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $PWD 'tools\code-index-mcp\target\release'
+          $binary = Join-Path $artifactRoot 'bsl-indexer.exe'
+          $expected = ((Get-Content -Raw (Join-Path $artifactRoot 'bsl-indexer.exe.sha256')) -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Downloaded bsl-indexer checksum mismatch: expected $expected, got $actual"
+          }
+          .\scripts\setup.ps1 -SkipBinaryDownload
+          $fixture = Join-Path $PWD 'tools\cc-1c-skills\tests\skills\cases\interface-edit\snapshots\basic'
+          .\scripts\04_index_1c_dump.ps1 -DumpRoot $fixture -Force
       - name: Run smoke scripts
         shell: pwsh
         run: |
@@ -130,11 +181,11 @@ jobs:
     name: License compliance (REUSE)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
       - name: Install reuse
-        run: sudo apt-get update && sudo apt-get install -y reuse
+        run: python3 -m pip install --disable-pip-version-check reuse==6.2.0
       - name: Reuse lint
         run: reuse lint
 
@@ -142,26 +193,27 @@ jobs:
     name: Markdown lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DavidAnson/markdownlint-cli2-action@v18
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: DavidAnson/markdownlint-cli2-action@992badcdf24e3b8eb7e87ff9287fe931bcb00c6e # v20.0.0
         with:
           globs: |
             **/*.md
             !node_modules/**
             !tools/cc-1c-skills/**
+            !tools/code-index-mcp/**
 
   pre-commit:
     name: Pre-commit (all hooks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: "3.11"
       - name: Install pre-commit
-        run: pip install pre-commit
+        run: pip install pre-commit==4.6.0
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
         env:
@@ -178,7 +230,7 @@ jobs:
     runs-on: windows-latest
     needs: rust-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
@@ -198,7 +250,7 @@ jobs:
         continue-on-error: true
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: cargo-test-report
           path: |

@@ -8,16 +8,16 @@ safe (not inside strings, not in bracket contexts, not in comments).
 Usage:
   python scripts/fix-line-lengths.py [--max-length 100] [--dry-run] [paths...]
 """
+
 from __future__ import annotations
 
 import argparse
 import io
 import re
 import sys
-import token
 import tokenize
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 DEFAULT_MAX_LENGTH = 100
 DEFAULT_EXCLUDE = (
@@ -51,10 +51,7 @@ def _is_protected(line: str) -> bool:
 
 def _is_triple_quoted_string_line(line: str) -> bool:
     body = line.strip()
-    if body.startswith('"""') or body.startswith("'''"):
-        if body.count(body[:3]) == 1:
-            return True
-    return False
+    return bool((body.startswith('"""') or body.startswith("'''")) and body.count(body[:3]) == 1)
 
 
 def _compute_safe_splits(text: str, max_length: int) -> dict[int, list[int]]:
@@ -94,8 +91,11 @@ def _compute_safe_splits(text: str, max_length: int) -> dict[int, list[int]]:
                     splits.append(nxt.start[1])
                 continue
             # Both are NAME/OP/NUMBER
-            if cur.type in (tokenize.NAME, tokenize.OP, tokenize.NUMBER) and \
-               nxt.type in (tokenize.NAME, tokenize.OP, tokenize.NUMBER):
+            if cur.type in (tokenize.NAME, tokenize.OP, tokenize.NUMBER) and nxt.type in (
+                tokenize.NAME,
+                tokenize.OP,
+                tokenize.NUMBER,
+            ):
                 gap_start_col = cur.end[1]
                 gap_end_col = nxt.start[1]
                 gap_len = gap_end_col - gap_start_col
@@ -118,7 +118,7 @@ def _wrap_file(text: str, max_length: int) -> str:
     raw_lines = text.split("\n")
     # Operators that must NOT appear at the start of a wrapped line.
     # Splitting before them would change semantics or look ugly.
-    BAD_HEAD_TAIL_OPS = ("=", "+", "-", "*", "/", "%", "**", "//", "->", ":", ",")
+    bad_head_tail_ops = ("=", "+", "-", "*", "/", "%", "**", "//", "->", ":", ",")
     for i, line in enumerate(raw_lines, start=1):
         if i not in safe or len(line) <= max_length:
             out_lines.append(line)
@@ -140,11 +140,11 @@ def _wrap_file(text: str, max_length: int) -> str:
         for p in candidates:
             head = line[:p].rstrip()
             tail = line[p:].lstrip()
-            if head.endswith(BAD_HEAD_TAIL_OPS):
+            if head.endswith(bad_head_tail_ops):
                 continue
             if not tail:
                 continue
-            if tail[0] in BAD_HEAD_TAIL_OPS:
+            if tail[0] in bad_head_tail_ops:
                 continue
             good_candidates.append(p)
         if not good_candidates:
@@ -200,11 +200,9 @@ def main() -> int:
                 path.write_text(new_text, encoding="utf-8")
         total_lines_after += len(new_text.splitlines())
     if args.dry_run:
-        print(f"[DRY RUN] {total_changed} file(s) would change; "
-              f"{total_lines_before} -> {total_lines_after} lines")
+        print(f"[DRY RUN] {total_changed} file(s) would change; " f"{total_lines_before} -> {total_lines_after} lines")
     else:
-        print(f"[OK] {total_changed} file(s) updated; "
-              f"{total_lines_before} -> {total_lines_after} lines")
+        print(f"[OK] {total_changed} file(s) updated; " f"{total_lines_before} -> {total_lines_after} lines")
     return 0
 
 

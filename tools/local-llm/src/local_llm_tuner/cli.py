@@ -4,9 +4,9 @@ import argparse
 import ctypes
 import json
 import os
-from dataclasses import dataclass, asdict
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Sequence
 
 
 class MemoryStatusEx(ctypes.Structure):
@@ -94,9 +94,7 @@ def _choose_notes(model_size_bytes: int, total_ram_bytes: int | None, ctx_size: 
     if total_ram_bytes is not None:
         total_ram_gib = total_ram_bytes / (1024**3)
         if model_size_bytes / (1024**3) > 8.0:
-            notes.append(
-                f"Model weights are large for 16 GB RAM; expect tight headroom at {total_ram_gib:.1f} GiB."
-            )
+            notes.append(f"Model weights are large for 16 GB RAM; expect tight headroom at {total_ram_gib:.1f} GiB.")
         if ctx_size > 4096 and total_ram_gib < 18:
             notes.append("The larger context is only safe for smaller GGUFs on this box.")
     return notes

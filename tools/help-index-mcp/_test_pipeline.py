@@ -4,8 +4,9 @@ import logging
 import os
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 from indexer import HbkIndexer
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 
 workbench_root = Path(os.environ.get("WORKBENCH_ROOT", Path(__file__).resolve().parents[2]))
 db_path = workbench_root / "generated" / "help-index" / "help-index.db"

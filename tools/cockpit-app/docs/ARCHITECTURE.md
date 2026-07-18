@@ -7,7 +7,7 @@ separate webview process. The Rust binary is the parent of all
 sub-processes; the webview talks to it only through the IPC bridge
 (`tauri::command`).
 
-```
+```text
                    ┌─────────────────────────────────────────────┐
                    │ Tauri 2.x shell (cockpit-app.exe)           │
                    │                                             │
@@ -42,7 +42,7 @@ implicitly. v0.2.0 will add per-server channels.
 
 ## Data flow: UI → MCP server
 
-```
+```text
 User clicks "Start" on the Cockpit card
   └─▶ React: mcp.start("1c-code-index")
         └─▶ invoke("start_server", { name: "1c-code-index" })
@@ -54,7 +54,7 @@ User clicks "Start" on the Cockpit card
 
 For tool calls:
 
-```
+```text
 User submits a search query
   └─▶ React: useMcpTool("1c-code-index", "search_text")
         └─▶ invoke("call_tool", { server, tool, args })

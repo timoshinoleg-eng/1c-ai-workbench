@@ -38,7 +38,7 @@ def resolve_skd_targets(root: Path, value: str) -> list[Path]:
     if base.is_file():
         return [base]
     if base.is_dir():
-        return [path for path in base.rglob("*.xml")]
+        return list(base.rglob("*.xml"))
     matches = [path for path in root.rglob("*.xml") if value.lower().replace("\\", "/") in path.as_posix().lower()]
     return matches[:20]
 

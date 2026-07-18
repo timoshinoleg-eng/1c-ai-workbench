@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn build_messages_truncates_long_body() {
-        let body: String = std::iter::repeat('а').take(MAX_BODY_CHARS + 100).collect();
+        let body = "а".repeat(MAX_BODY_CHARS + 100);
         let msgs = build_messages("sys", "p", &body);
         let user = &msgs[1].content;
         assert!(user.contains("…(обрезано)…"));

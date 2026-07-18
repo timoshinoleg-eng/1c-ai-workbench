@@ -5,6 +5,7 @@ Experimental FastMCP server for read-only 1C:Enterprise configuration analysis.
 It exposes 16 callable tools over the local `source-mirror` XML/BSL dump:
 
 **Search & Explain (6 tools):**
+
 - `find_object`
 - `find_similar`
 - `audit_metadata`
@@ -13,6 +14,7 @@ It exposes 16 callable tools over the local `source-mirror` XML/BSL dump:
 - `query_optimizer`
 
 **Metadata Introspection (7 tools) — from cc-1c-skills:**
+
 - `meta_info`
 - `skd_info`
 - `form_info`
@@ -22,6 +24,7 @@ It exposes 16 callable tools over the local `source-mirror` XML/BSL dump:
 - `mxl_info`
 
 **Validation & Diff (3 tools) — from cc-1c-skills:**
+
 - `meta_validate`
 - `form_validate`
 - `cfe_diff`

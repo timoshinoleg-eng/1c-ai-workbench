@@ -34,7 +34,7 @@ def _default_hbk_dir() -> Path:
     configured = os.environ.get("HBK_DIR")
     if configured:
         return Path(configured).expanduser()
-    platform_root = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "1cv8t"
+    platform_root = Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "1cv8t"
     candidates = sorted(platform_root.glob(r"*\bin"), reverse=True)
     for candidate in candidates:
         if list(candidate.glob("*.hbk")) or list(candidate.glob("*.HBK")):

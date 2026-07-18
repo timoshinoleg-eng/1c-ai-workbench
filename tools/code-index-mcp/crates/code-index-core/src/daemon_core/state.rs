@@ -197,7 +197,7 @@ mod tests {
     async fn set_ready_clears_progress() {
         let st = DaemonState::new();
         let path = PathBuf::from("/a");
-        st.apply_config(&[path.clone()]).await;
+        st.apply_config(std::slice::from_ref(&path)).await;
         st.set_status(&path, PathStatus::InitialIndexing).await;
         st.set_progress(&path, Progress::new(10, 100)).await;
 

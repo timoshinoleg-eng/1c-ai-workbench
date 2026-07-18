@@ -20,7 +20,7 @@ Prebuilt `bsl-indexer.exe` публикуется на каждый тег `v*` 
 Workbench готов для локального read-only использования.
 
 | Метрика | Цель | Факт |
-|---|---|---|
+| --- | --- | --- |
 | `scripts/06_healthcheck.ps1` | 6/6 Ready | 6/6 Ready |
 | `python -m pytest -q` | all green | 62/62 passed |
 | `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | PASS: 8 / FAIL: 0 / SKIP: 1 |
@@ -42,7 +42,7 @@ Workbench готов для локального read-only использова�
 
 ## Архитектура
 
-```
+```text
 XML-выгрузка 1С
   C:\1c-ai-client\dump
         |
@@ -208,6 +208,7 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 границы заимствований описаны в `docs/legal/BORROWING_MAP.md`.
 
 Ключевые источники:
+
 - `cc-1c-skills` от Nikolay-Shirokov, MIT
 - BSL Language Server
 - OneScript

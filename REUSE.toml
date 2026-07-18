@@ -34,6 +34,7 @@ path = [
     "**/*.test.ts",
     "**/*.spec.ts",
     ".editorconfig",
+    ".gitattributes",
     ".gitignore",
     ".markdownlint.jsonc",
     ".prettierrc",
@@ -71,6 +72,22 @@ path = [
     "tests/prompt-gallery/**",
 ]
 SPDX-FileCopyrightText = "2026 1c-ai-workbench contributors"
+SPDX-License-Identifier = "MIT"
+
+# Vendored upstream snapshot. Override the workbench default annotation so
+# every file type, including XML fixtures and extensionless metadata, keeps
+# the upstream copyright attribution.
+[[annotations]]
+path = ["tools/code-index-mcp/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Regsorm"
+SPDX-License-Identifier = "MIT"
+
+# Vendored upstream snapshot used by the read-only skills bridge.
+[[annotations]]
+path = ["tools/cc-1c-skills/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2025-2026 Nick Shirokov"
 SPDX-License-Identifier = "MIT"
 
 # Adapted from cc-1c-skills (MIT) by Nikolay Shirokov.

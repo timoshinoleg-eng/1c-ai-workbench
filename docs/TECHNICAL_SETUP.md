@@ -142,4 +142,3 @@ cd <workbench-root>
 Сценарий рассказа: `demo-showcase\TALK_TRACK.md`.
 
 ## 13. Инструкция для бизнес-партнёра
-

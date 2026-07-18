@@ -3430,7 +3430,7 @@ mod tests {
             )
             .unwrap();
         }
-        run_incremental_extras(&repo, &mut storage, &[bsl_abs.clone()], &[]).unwrap();
+        run_incremental_extras(&repo, &mut storage, std::slice::from_ref(&bsl_abs), &[]).unwrap();
 
         let count: i64 = storage
             .conn()
@@ -4483,7 +4483,7 @@ mod tests {
         let mut st_i = fresh_storage(&tmp_i);
         run_index_extras(&repo_i, &mut st_i).unwrap();
         write(&doc_path, doc_v2);
-        run_incremental_extras(&repo_i, &mut st_i, &[doc_path.clone()], &[]).unwrap();
+        run_incremental_extras(&repo_i, &mut st_i, std::slice::from_ref(&doc_path), &[]).unwrap();
 
         assert_eq!(
             snapshot_dl(st_i.conn()),

@@ -23,12 +23,13 @@
 Эти инструменты мы **ставим и используем**. Они — часть toolchain workbench.
 
 | Инструмент | Лицензия | Формат использования | Аттрибуция |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **BSL Language Server** | [MIT](https://github.com/1c-syntax/bsl-language-server/blob/master/LICENSE.md) | MCP-обёртка / CLI-вызов для диагностики, explain/fix flows | `1c-syntax/bsl-language-server` |
 | **OneScript** | [Apache 2.0](https://github.com/EvilBeaver/OneScript/blob/develop/LICENSE) | Runtime для automation-скриптов, via `oscript` CLI | `EvilBeaver/OneScript` |
 | **cc-1c-skills** | [MIT](https://github.com/Nikolay-Shirokov/cc-1c-skills/blob/main/LICENSE) | Подмодуль, навыки для AI-агентов по 1С (уже инициализирован в `tools/cc-1c-skills/`) | `Nikolay-Shirokov/cc-1c-skills` |
 
 **Legal:** Все три — open-source с permissive-лицензиями. MIT и Apache 2.0 разрешают использование, модификацию и распространение при условии указания авторства. Мы указываем авторство:
+
 - В README.md проекта (раздел "Third-Party Components")
 - В integration cards каждого инструмента
 - В LICENSE файле при распространении
@@ -42,18 +43,21 @@
 **Анализ:** `docs/cc-1c-skills-analysis.md`
 
 **Что берём:**
+
 - Логику `*-info` скриптов (Python) — адаптируем под FastMCP-инструменты (read-only)
 - Логику `*-validate` скриптов (Python) — адаптируем под quality-gate MCP-инструменты
 - SKILL.md как reference для промпт-дизайна и UX-паттернов
 - Формат frontmatter (`name`, `description`, `argument-hint`, `allowed-tools`) — как reference для наших skills
 
 **Что НЕ берём (Phase A):**
+
 - PowerShell-скрипты — используем Python-версию для кросс-платформенности MCP
 - Write-операции (`*-edit`, `*-compile`, `*-remove`, `*-add`) — откладываем до Phase B (dev-automation)
 - Live-режим skills (`db-*`, `web-*`) — откладываем до Phase B (live-1c-bridge)
 - Скрипты без Py-реализации (`db-list`, `epf-bsp-*`, `erf-build`, `form-patterns`, `web-test`) — reference-only
 
 **Аттрибуция:**
+
 - `tools/skills-bridge/ATTRIBUTION.md` — ссылка на оригинальный проект
 - `tools/skills-bridge/README.md` — "Based on cc-1c-skills by Nikolay-Shirokov (MIT)"
 - Комментарии в каждом adapted tool: `# Adapted from cc-1c-skills/scripts/<name>.py (MIT)`
@@ -61,6 +65,7 @@
 - `docs/cc-1c-skills-analysis.md` — полный каталог с attribution
 
 **Лицензионные границы:**
+
 - MIT разрешает: копировать, модифицировать, распространять с указанием авторства
 - Наш MCP-adapter — производная работа, остаётся MIT
 - Не удалять LICENSE из `tools/cc-1c-skills/`
@@ -68,6 +73,7 @@
 - Не копировать текст SKILL.md без пометки (MIT, cc-1c-skills)
 
 **Топ-10 P0 навыков для MCP-обёртки:**
+
 1. `meta-info` — структура объекта метаданных (реквизиты, ТЧ, формы, движения)
 2. `form-info` — структура управляемой формы (элементы, реквизиты, команды, события)
 3. `skd-info` — структура СКД (наборы, поля, параметры, варианты)
@@ -84,7 +90,7 @@
 ## 2. P1 — Активная адаптация (берём концепции, НЕ код)
 
 | Инструмент | Лицензия | Что берём | Что НЕ берём |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **vanessa-runner** | [Apache 2.0](https://github.com/vanessa-opensource/vanessa-runner) | CI/orchestration workflow, 2.x LTS recipe | Код runner'а — используем как зависимость через `vrunner` |
 | **ai-review** | [MIT](https://github.com/Nikita-Filonov/ai-review) | CI-driven AI review workflow model, multi-provider architecture | Код — используем как CLI-инструмент |
 | **Vanessa-Automation** | [Apache 2.0](https://github.com/Pr-Mex/vanessa-automation) | Gherkin/BDD как target для AI-генерации тестов | Отложено до появления live mode |
@@ -93,6 +99,7 @@
 | **SonarQube BSL Plugin** | [LGPL 3.0](https://github.com/1c-syntax/sonar-bsl-plugin-community) | Quality gate концепция для enterprise-режима | Не встраиваем — документируем как внешний профиль |
 
 **Legal:** Заимствование концепций и UX-паттернов не нарушает авторских прав (идеи не защищены копирайтом, только их выражение). Однако:
+
 - При описании интеграций явно указываем, что это "адаптация подхода из проекта X"
 - Не копируем формулировки из README/docs оригинальных проектов — пишем свои
 - Не бандлим бинарники
@@ -102,7 +109,7 @@
 ## 3. P2 — Методологические заимствования
 
 | Источник | Что берём | Формат |
-|---|---|---|
+| --- | --- | --- |
 | **Landscape1C** (Oxotka/Landscape1C, MIT) | Структуру карточки: «что это / зачем / с чего начать» | Своя реализация, своя вёрстка, своя специфика |
 | **Landscape1C** | Оси навигации: роль, контекст, зрелость, лицензия | Адаптируем под workbench (4 оси: роль, сценарий, зрелость, совместимость) |
 | **Landscape1C** | Граф зависимостей между инструментами | Внедряем в Integration Packs как "stack map" |
@@ -112,6 +119,7 @@
 | **cc-1c-skills** | Agent Skills формат (skill-based AI workflow) | Адаптируем под opencode/MCP через наш prompt gallery |
 
 **Legal:** Landscape1C — [MIT](https://github.com/Oxotka/Landscape1C?tab=MIT-1-ov-file). Методология, структура данных, оси навигации — идеи, не защищённые копирайтом. Наша реализация:
+
 - Пишем свой текст карточек (не копируем с landscape1c.ru)
 - Используем свою цветовую схему и layout
 - Не копируем data.js
@@ -123,7 +131,7 @@
 ## 4. Reference-only (изучаем, НЕ берём)
 
 | Инструмент | Причина не брать | Что делаем |
-|---|---|---|
+| --- | --- | --- |
 | **Confaster** | Закрытый, без репозитория | Изучаем UX, конкурируем |
 | **1С:Напарник** | Проприетарный, только EDT | Позиционируемся как альтернатива для opencode/Cursor/любого MCP |
 | **Infostart Toolkit** | Условно-бесплатный, закрытый | Reference для understanding рынка |
@@ -143,6 +151,7 @@
 ## 5. Legal Boundaries — чёткие правила
 
 ### МОЖНО
+
 - ✅ Использовать open-source проекты согласно их лицензиям (MIT, Apache 2.0, LGPL)
 - ✅ Указывать проекты как источники вдохновения
 - ✅ Адаптировать архитектурные концепции (MCP, LSP, skill-based workflows)
@@ -152,6 +161,7 @@
 - ✅ Форкать MIT-проекты с сохранением LICENSE
 
 ### НЕЛЬЗЯ
+
 - ❌ Копировать текст карточек с landscape1c.ru (даже с пересказом)
 - ❌ Копировать data.js структуру один-в-один
 - ❌ Бандлить закрытые бинарники
@@ -162,7 +172,9 @@
 - ❌ Использовать trademarked names без разрешения (1С is trademark of 1С Company)
 
 ### Аттрибуция в коде
+
 Каждый integration card содержит:
+
 ```markdown
 ## Sources
 - Original project: [name](url)
@@ -171,6 +183,7 @@
 ```
 
 ### Аттрибуция в README
+
 ```markdown
 ## Third-Party Components
 
@@ -193,7 +206,7 @@
 Проверка: следующие элементы УЖЕ реализованы в 1c-ai-workbench, их не нужно "брать" извне:
 
 | Элемент | Где |
-|---|---|
+| --- | --- |
 | Индексация 1C выгрузки | `bsl-indexer` (Rust) из `code-index-mcp` |
 | MCP сервер | `opencode.jsonc` + `bsl-indexer.exe serve` |
 | Healthcheck | `06_healthcheck.ps1` |
@@ -213,7 +226,7 @@
 После инвентаризации — вот что НУЖНО сделать (этого нет ни в одном внешнем проекте):
 
 | Фича | Почему нет готового решения |
-|---|---|
+| --- | --- |
 | **MCP-инструмент "prompt router"** | Никто не делал MCP-обёртку для 1C prompt gallery |
 | **BSL LS diagnostics → risk scan bridge** | Нужно соединить вывод BSL LS с нашей risk-системой |
 | **Semantic search (RAG) для 1C кода** | Никто в 1C-экосистеме не делает векторный поиск по выгрузке |

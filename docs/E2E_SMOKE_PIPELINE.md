@@ -39,7 +39,7 @@ cd <workbench-root>
 ## Шаги
 
 | # | Name | Script | Что проверяет |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 0 | env_precheck | inline | python, bsl-indexer.exe, dump dir |
 | 1 | index_1c_dump | 04_index_1c_dump.ps1 | переиндексация выгрузки (-SkipIndex чтобы пропустить) |
 | 2 | healthcheck | 06_healthcheck.ps1 | binary, index, logs, stats, query, mcp help (6 checks) |
@@ -60,7 +60,7 @@ cd <workbench-root>
 ## Exit codes
 
 | Code | Значение |
-|---|---|
+| --- | --- |
 | 0 | PASS |
 | 1 | FAIL или FAIL_STRICT |
 | 2 | BLOCKED (env precheck) |
@@ -68,7 +68,7 @@ cd <workbench-root>
 ## Параметры
 
 | Параметр | Default | Назначение |
-|---|---|---|
+| --- | --- | --- |
 | `-WorkbenchRoot` | parent of scripts/ | корень workbench |
 | `-DumpRoot` | `C:\1c-ai-client\dump` | путь к выгрузке 1С |
 | `-SkipIndex` | false | пропустить шаг 1 (переиндексацию) |
@@ -78,7 +78,7 @@ cd <workbench-root>
 ## Artifacts
 
 | Файл | Формат |
-|---|---|
+| --- | --- |
 | `generated\reports\22_e2e_smoke_report.md` | Markdown |
 | `generated\reports\22_e2e_smoke_report.json` | JSON |
 | `generated\reports\readiness-report.html` | HTML (step 2) |
@@ -109,7 +109,7 @@ Exit code 0 = pipeline green, можно мерджить. Non-zero = block.
 ## Типичное время прогона
 
 | Режим | Время |
-|---|---|
+| --- | --- |
 | `-SkipIndex` | ~32 s (8 steps, bridges ~30 s) |
 | полный (с индексацией) | ~32 s + время индексации (зависит от размера выгрузки) |
 

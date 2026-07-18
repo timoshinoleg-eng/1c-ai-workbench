@@ -9,7 +9,7 @@
 `06_healthcheck.ps1` проверяет ровно шесть вещей:
 
 | # | Чек | Что значит Ready |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `binary exists` | `tools\code-index-mcp\target\release\bsl-indexer.exe` собран |
 | 2 | `index exists` | `generated\index\source-mirror\.code-index\index.db` создан |
 | 3 | `logs writable` | `logs\` доступен на запись |
