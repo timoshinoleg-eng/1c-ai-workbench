@@ -28,7 +28,7 @@ Put an exported 1C configuration into:
 C:\1c-ai-client\dump
 ```
 
-Use a copy/export only. Do not point 1C AI Dev Workbench at a live 1C database. The scripts mirror this folder into `C:\1c-ai-workbench\generated\index\source-mirror` before indexing so the original dump is not modified.
+Use a copy/export only. Do not point 1C AI Dev Workbench at a live 1C database. The scripts mirror this folder into `<workbench-root>\generated\index\source-mirror` before indexing so the original dump is not modified.
 
 ## 4. Run scripts in order
 
@@ -36,7 +36,7 @@ Open PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\01_check_env.ps1
 .\scripts\16_check_skills_bridge.ps1
@@ -52,7 +52,7 @@ If `setup.ps1` cannot download `bsl-indexer.exe`, unpack the release artifact ma
 
 ## 5. Connect Cursor / VS Code
 
-Templates are in `C:\1c-ai-workbench\configs`:
+Templates are in `<workbench-root>\configs`:
 
 - `cursor-mcp.json` — template for Cursor-style `mcpServers`.
 - `vscode-mcp.json` — template for VS Code MCP settings; verify exact schema in your VS Code extension/version.
@@ -102,13 +102,13 @@ A working answer contains:
 Logs are in:
 
 ```powershell
-C:\1c-ai-workbench\logs
+<workbench-root>\logs
 ```
 
 Generated indexes and mirror data are in:
 
 ```powershell
-C:\1c-ai-workbench\generated
+<workbench-root>\generated
 ```
 
 ## 10. opencode
@@ -121,7 +121,7 @@ opencode can be used instead of Cursor or VS Code. See:
 Default MCP mode remains local `stdio`:
 
 ```powershell
-C:\1c-ai-workbench\tools\code-index-mcp\target\release\bsl-indexer.exe serve --path onec=C:\1c-ai-workbench\generated\index\source-mirror --transport stdio
+.\tools\code-index-mcp\target\release\bsl-indexer.exe serve --path onec=.\generated\index\source-mirror --transport stdio
 ```
 
 ## 11. Pilot and sales materials
@@ -135,7 +135,7 @@ C:\1c-ai-workbench\tools\code-index-mcp\target\release\bsl-indexer.exe serve --p
 Открыть:
 
 ```powershell
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\11_open_demo_showcase.ps1
 ```
 

@@ -9,7 +9,7 @@ Pipeline связывает все ключевые smoke-проверки в о
 ## Запуск
 
 ```powershell
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\04_index_1c_dump.ps1 -DumpRoot "C:\1c-ai-client\dump" -Force
 .\scripts\22_run_e2e_smoke.ps1 -DumpRoot "C:\1c-ai-client\dump" -SkipIndex
@@ -99,7 +99,7 @@ cd C:\1c-ai-workbench
 # пример GitHub Actions
 - name: E2E smoke
   run: |
-    cd C:\1c-ai-workbench
+    cd <workbench-root>
     .\scripts\22_run_e2e_smoke.ps1 -SkipIndex -Strict
   shell: powershell
 ```

@@ -57,6 +57,13 @@
       "what_it_does": "Holds market and UX references that inform positioning but are not operational dependencies.",
       "first_smoke_check": "Verify the reference is reachable and the product claims are attributable.",
       "next_scenario": "Use it to sharpen product messaging, pack boundaries, and future workflow decisions."
+    },
+    {
+      "id": "evaluation",
+      "name": "Evaluation",
+      "what_it_does": "Tracks reproducible ways to measure BSL analysis and AI-assisted 1C development quality.",
+      "first_smoke_check": "Run a deterministic fixture without provider credentials and confirm that the score can be reproduced locally.",
+      "next_scenario": "Promote only metrics that have a documented fixture, stable expected result, and explicit cost boundary."
     }
   ],
   "tools": [
@@ -243,6 +250,125 @@
       "sources": [
         "https://marketplace.visualstudio.com/items?itemName=yellow-hammer.1c-platform-tools",
         "https://github.com/yellow-hammer/vscode-1c-platform-tools"
+      ]
+    },
+    {
+      "id": "prism-bsl-benchmark",
+      "name": "PRISM BSL Benchmark",
+      "pack": "evaluation",
+      "status": "reference-only",
+      "why": "The July 2026 PRISM releases provide a strong reproducible evaluation methodology with real 1C execution. The workbench will adapt evaluation principles, not copy benchmark results or make PRISM a runtime dependency.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Review the current PRISM methodology, validity notes, and green CI before defining a local fixture.",
+        "expected": "Every proposed metric maps to a deterministic local fixture and a documented acceptance threshold."
+      },
+      "next_scenario": "Create a small provider-free benchmark for indexing, navigation, and evidence-grounded answers over the demo dump.",
+      "sources": [
+        "https://github.com/genlab-1c/prism",
+        "https://github.com/genlab-1c/prism/releases/tag/v1.7.0"
+      ]
+    },
+    {
+      "id": "mxl-merge-tool",
+      "name": "MXL Merge Tool",
+      "pack": "review",
+      "status": "reference-only",
+      "why": "A focused MIT tool for semantic diff and three-way merge of 1C MXL documents. Version 0.1.0 is promising and its 31 tests passed locally, but the project is new and has no upstream CI yet.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Run the upstream 31-test suite in an isolated checkout and verify that install changes only repository-local Git attributes and config.",
+        "expected": "Tests pass and no global Git configuration or live 1C data is changed during evaluation."
+      },
+      "next_scenario": "Design an optional, disabled-by-default adapter after upstream adds CI or the workbench supplies equivalent contract tests.",
+      "sources": [
+        "https://github.com/alexiosus/mxl-merge-tool",
+        "https://github.com/alexiosus/mxl-merge-tool/releases/tag/v0.1.0"
+      ]
+    },
+    {
+      "id": "1c-odata-mcp",
+      "name": "1C OData MCP",
+      "pack": "live-config-ops",
+      "status": "reference-only",
+      "why": "A maintained MIT MCP server with structured responses and read-only defaults. It also exposes many opt-in write tools, so it must remain outside the default file-only workbench and cannot inherit credentials automatically.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Inspect version 0.3.0 security controls and test only against a disposable read-only OData user.",
+        "expected": "The server starts with write disabled, secrets stay outside tracked files, and no mutation tools are exercised."
+      },
+      "next_scenario": "Specify an external integration profile that exposes read tools only and requires an explicit separate security review for any write mode.",
+      "sources": [
+        "https://github.com/evilbruce666/1c-odata-mcp",
+        "https://github.com/evilbruce666/1c-odata-mcp/releases/tag/v0.3.0"
+      ]
+    },
+    {
+      "id": "feenlace-mcp-1c",
+      "name": "mcp-1c by feenlace",
+      "pack": "reference",
+      "status": "reference-only",
+      "why": "An active MIT 1C MCP implementation with a compact binary and frequent July releases. Its live-base architecture and paid feature tiers overlap with workbench capabilities, so it is evaluated as an external interoperability target rather than vendored code.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Compare the free-core tool contract and v1.11.2 release notes with the workbench read-only dump workflow.",
+        "expected": "Free and paid boundaries are explicit and no workbench capability claim depends on a paid external tier."
+      },
+      "next_scenario": "Add a compatibility note for users who already run mcp-1c without adding it to the default installer.",
+      "sources": [
+        "https://github.com/feenlace/mcp-1c",
+        "https://github.com/feenlace/mcp-1c/releases/tag/v1.11.2"
+      ]
+    },
+    {
+      "id": "xbsl-element-toolkit",
+      "name": "XBSL for 1C:Element",
+      "pack": "reference",
+      "status": "reference-only",
+      "why": "A fast-moving MIT linter, LSP, documentation index, scaffolder, and MCP server. It targets 1C:Element rather than the current Enterprise 8.3 scope, so integration would be a separate product track.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Review the current XBSL release and confirm that its fixtures and grammar target 1C:Element.",
+        "expected": "No XBSL capability is presented as Enterprise 8.3 support."
+      },
+      "next_scenario": "Revisit only after the workbench defines a separate 1C:Element compatibility profile.",
+      "sources": [
+        "https://github.com/keyfire/xbsl",
+        "https://pypi.org/project/xbsl/"
+      ]
+    },
+    {
+      "id": "edt-sonarq-plugin",
+      "name": "SonarQ in EDT",
+      "pack": "bsl-quality",
+      "status": "reference-only",
+      "why": "A new EPL-2.0 EDT 2026.1 plugin with green CI and local BSL Language Server analysis. It remains an external editor integration so EPL obligations and EDT-specific runtime requirements stay outside the MIT default artifact.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Verify the current plugin release against a disposable EDT 2026.1 workspace.",
+        "expected": "The plugin loads without changing the workbench installer or vendored source tree."
+      },
+      "next_scenario": "Reuse only UX and diagnostic-flow ideas while keeping the plugin an external install.",
+      "sources": [
+        "https://github.com/Jimmo910/edt-sonarq-plugin",
+        "https://github.com/Jimmo910/edt-sonarq-plugin/releases/tag/v0.4.0"
+      ]
+    },
+    {
+      "id": "iikona-yaxunit-suite",
+      "name": "ИИкона YAxUnit Suite",
+      "pack": "testing",
+      "status": "reference-only",
+      "why": "A July 2026 MIT corpus of 398 YAxUnit tests covering agent loops, RAG, MCP, parsers, and monitoring. The tests are coupled to ИИкона and are used as test-design evidence, not copied as workbench tests.",
+      "smoke_check": {
+        "type": "manual",
+        "command": "Map each reusable testing pattern to an existing workbench boundary before adapting a fixture.",
+        "expected": "Adapted tests have independent fixtures and do not require the ИИкона extension."
+      },
+      "next_scenario": "Extract a checklist for fail-closed MCP, prompt fallback, and audit-retention tests without copying connector-specific assertions.",
+      "sources": [
+        "https://github.com/andromanpro/1c-ai-connector-tests",
+        "https://github.com/andromanpro/1c-ai-connector"
       ]
     },
     {

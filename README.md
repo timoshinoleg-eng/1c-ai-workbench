@@ -23,7 +23,7 @@ Workbench готов для локального read-only использова�
 |---|---|---|
 | `scripts/06_healthcheck.ps1` | 6/6 Ready | 6/6 Ready |
 | `python -m pytest -q` | all green | 62/62 passed |
-| `scripts/22_run_e2e_smoke.ps1` | all green | 9/9 PASS |
+| `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | PASS: 8 / FAIL: 0 / SKIP: 1 |
 | `bsl-indexer.exe` (Rust) | built & in release | 25.6 MB |
 
 ## Что решает
@@ -90,7 +90,7 @@ mirror. Исходная выгрузка не изменяется, live write 
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\16_check_skills_bridge.ps1
 .\scripts\17_check_ibcmd_bridge.ps1
@@ -110,7 +110,7 @@ cd C:\1c-ai-workbench
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\01_check_env.ps1
 .\scripts\02_clone_repos.ps1
