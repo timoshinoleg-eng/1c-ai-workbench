@@ -1,0 +1,264 @@
+name: Build signed release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Candidate version without v prefix, for example 0.10.0"
+        required: true
+        type: string
+      commit_sha:
+        description: "Frozen 40-character commit SHA currently at origin/main"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG_STYLE: never
+  CANDIDATE_VERSION: ${{ inputs.version }}
+  CANDIDATE_COMMIT: ${{ inputs.commit_sha }}
+
+jobs:
+  signed-candidate:
+    name: Build and test signed Windows candidate
+    runs-on: windows-latest
+    environment: release-candidate
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify frozen main commit and version
+        shell: pwsh
+        run: |
+          if ($env:CANDIDATE_VERSION -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+][0-9A-Za-z.-]+)?$') {
+            throw "Candidate version must be semantic and must not start with v: $env:CANDIDATE_VERSION"
+          }
+          if ($env:CANDIDATE_COMMIT -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Candidate commit must be a full 40-character SHA."
+          }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch origin/main." }
+          $head = (git rev-parse HEAD).Trim()
+          $main = (git rev-parse origin/main).Trim()
+          if ($env:GITHUB_REF -ne 'refs/heads/main' -or $env:GITHUB_SHA -ne $head) {
+            throw "Candidate workflow must be dispatched from the frozen main commit."
+          }
+          if ($head -ne $env:CANDIDATE_COMMIT) {
+            throw "Checked-out HEAD $head does not match requested commit $env:CANDIDATE_COMMIT."
+          }
+          if ($head -ne $main) {
+            throw "Candidate commit $head is not the current frozen origin/main head $main."
+          }
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/code-index-mcp
+
+      - name: Parse all PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $files = @('START_HERE.ps1') +
+            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $file).Path
+            $content = [System.IO.File]::ReadAllText($path)
+            if ($content.Contains([char]0xfffd)) { throw "Invalid replacement character: $path" }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path, [ref]$tokens, [ref]$errors
+            )
+            if ($errors) { throw "PowerShell parser failed for $path" }
+          }
+
+      - name: Build and smoke-test release indexer
+        working-directory: tools/code-index-mcp
+        shell: pwsh
+        run: |
+          cargo build --release -p bsl-indexer --features enrichment
+          if ($LASTEXITCODE -ne 0) { throw "Release indexer build failed." }
+          $exe = 'target\release\bsl-indexer.exe'
+          if (-not (Test-Path $exe)) { throw "bsl-indexer.exe missing after build." }
+          & $exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe smoke failed: $LASTEXITCODE" }
+          python ..\..\scripts\25_validate_code_index_045.py `
+            --binary $exe `
+            --report 'target\release\code-index-045-contract.json'
+          if ($LASTEXITCODE -ne 0) { throw "Code-index 0.45 contract failed." }
+          python ..\..\scripts\26_run_prism_eval.py `
+            --binary $exe `
+            --json-report 'target\release\prism-1c-eval.json' `
+            --markdown-report 'target\release\prism-1c-eval.md'
+          if ($LASTEXITCODE -ne 0) { throw "Provider-free evaluation failed." }
+
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.3'
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' `
+            -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Inno Setup archive checksum mismatch: $actual"
+          }
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup Authenticode verification failed: $($signature.Status)"
+          }
+          $process = Start-Process $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$installRoot`""
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "INNO_COMPILER=$installRoot\ISCC.exe" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare verified offline wheelhouse
+        shell: pwsh
+        run: .\scripts\23_prepare_offline_wheelhouse.ps1
+
+      - name: Import production Authenticode certificate
+        shell: pwsh
+        env:
+          SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_BASE64 }}
+          SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PFX_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:SIGNING_PFX_PASSWORD)) {
+            throw "Candidate build requires the protected Authenticode PFX secrets."
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP '1c-ai-workbench-signing.pfx'
+          [System.IO.File]::WriteAllBytes(
+            $pfxPath,
+            [Convert]::FromBase64String($env:SIGNING_PFX_BASE64)
+          )
+          $password = ConvertTo-SecureString $env:SIGNING_PFX_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $pfxPath `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -Password $password
+          if (-not $certificate.HasPrivateKey) {
+            throw "Imported Authenticode certificate has no private key."
+          }
+          "SIGNING_THUMBPRINT=$($certificate.Thumbprint)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SIGNING_PFX_PATH=$pfxPath" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build signed offline installer
+        shell: pwsh
+        run: |
+          .\scripts\19_build_windows_installer.ps1 `
+            -AppVersion $env:CANDIDATE_VERSION `
+            -OfflineWheelhouse '.\dist\offline-wheelhouse' `
+            -RequireOfflineWheelhouse `
+            -InnoCompiler $env:INNO_COMPILER `
+            -SignCertificateThumbprint $env:SIGNING_THUMBPRINT `
+            -RequireSignature
+
+      - name: Exercise signed installer offline and uninstall
+        shell: pwsh
+        run: |
+          $installer = ".\dist\installer\1c-ai-workbench-setup-$env:CANDIDATE_VERSION.exe"
+          .\scripts\24_test_windows_installer.ps1 `
+            -InstallerPath $installer `
+            -RequireSignature
+
+      - name: Assemble immutable candidate artifact
+        id: candidate
+        shell: pwsh
+        run: |
+          $shortSha = $env:CANDIDATE_COMMIT.Substring(0, 12).ToLowerInvariant()
+          $artifactName = "release-candidate-$env:CANDIDATE_VERSION-$shortSha"
+          $candidateDir = Join-Path $PWD 'dist\release-candidate'
+          New-Item -ItemType Directory -Path $candidateDir -Force | Out-Null
+
+          $sourceFiles = @(
+            '.\tools\code-index-mcp\target\release\bsl-indexer.exe',
+            '.\tools\code-index-mcp\target\release\code-index-045-contract.json',
+            '.\tools\code-index-mcp\target\release\prism-1c-eval.json',
+            '.\tools\code-index-mcp\target\release\prism-1c-eval.md',
+            ".\dist\installer\1c-ai-workbench-setup-$env:CANDIDATE_VERSION.exe"
+          )
+          foreach ($source in $sourceFiles) {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Candidate file is missing: $source"
+            }
+            Copy-Item -LiteralPath $source -Destination $candidateDir
+          }
+
+          $installerPath = Join-Path $candidateDir "1c-ai-workbench-setup-$env:CANDIDATE_VERSION.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $installerPath
+          if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
+            throw "Candidate installer must have a valid Authenticode signature and RFC 3161 timestamp."
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $env:SIGNING_THUMBPRINT) {
+            throw "Candidate signer thumbprint does not match the imported production certificate."
+          }
+
+          $manifest = [ordered]@{
+            schema_version = 1
+            repository = '${{ github.repository }}'
+            workflow = 'build-candidate.yml'
+            run_id = '${{ github.run_id }}'
+            commit_sha = $env:CANDIDATE_COMMIT.ToLowerInvariant()
+            version = $env:CANDIDATE_VERSION
+            artifact_name = $artifactName
+            signer_subject = $signature.SignerCertificate.Subject
+            signer_thumbprint = $signature.SignerCertificate.Thumbprint
+            signer_not_after_utc = $signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o')
+            timestamp_subject = $signature.TimeStamperCertificate.Subject
+          }
+          $manifest |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $candidateDir 'candidate-manifest.json') -Encoding utf8
+
+          $checksums = Get-ChildItem -LiteralPath $candidateDir -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$digest  $($_.Name)"
+            }
+          $checksums |
+            Set-Content -LiteralPath (Join-Path $candidateDir 'checksums.txt') -Encoding ascii
+
+          "artifact_name=$artifactName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload signed candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.candidate.outputs.artifact_name }}
+          path: dist/release-candidate
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove signing material
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:SIGNING_THUMBPRINT -match '^[0-9A-Fa-f]{40}$') {
+            $certificatePath = "Cert:\CurrentUser\My\$($env:SIGNING_THUMBPRINT)"
+            if (Test-Path $certificatePath) {
+              Remove-Item -LiteralPath $certificatePath -Force
+            }
+          }
+          if ($env:SIGNING_PFX_PATH -and
+              (Test-Path -LiteralPath $env:SIGNING_PFX_PATH)) {
+            Remove-Item -LiteralPath $env:SIGNING_PFX_PATH -Force
+          }

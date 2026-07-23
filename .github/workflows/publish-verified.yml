@@ -1,0 +1,253 @@
+name: Publish verified release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: "Successful Build signed release candidate workflow run ID"
+        required: true
+        type: string
+      tag:
+        description: "Immutable stable release tag, for example v0.10.0"
+        required: true
+        type: string
+      verification_record:
+        description: "URL or repository reference containing the clean-Windows verification evidence"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Verify provenance, tag frozen commit, and publish exact candidate
+    runs-on: windows-latest
+    environment: production-release
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate publication inputs and candidate run
+        id: run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERIFICATION_RECORD: ${{ inputs.verification_record }}
+        run: |
+          if ($env:CANDIDATE_RUN_ID -notmatch '^\d+$') {
+            throw "Candidate run ID must contain digits only."
+          }
+          if ($env:RELEASE_TAG -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw "Publication tag must be a stable semantic version and start with v."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:VERIFICATION_RECORD) -or
+              $env:VERIFICATION_RECORD.Length -lt 8) {
+            throw "A clean-Windows verification record reference is required."
+          }
+          if ($env:GITHUB_REF -ne 'refs/heads/main') {
+            throw "Publication workflow must be dispatched from main."
+          }
+
+          $workflow = gh api "repos/${{ github.repository }}/actions/workflows/build-candidate.yml" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve build-candidate workflow identity." }
+          $run = gh api "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve candidate workflow run." }
+          if ([string]$run.workflow_id -ne [string]$workflow.id) {
+            throw "Run $env:CANDIDATE_RUN_ID was not produced by build-candidate.yml."
+          }
+          if ($run.conclusion -ne 'success' -or $run.status -ne 'completed') {
+            throw "Candidate run must be completed successfully."
+          }
+          if ($run.head_repository.full_name -ne '${{ github.repository }}') {
+            throw "Candidate run belongs to an unexpected repository."
+          }
+          if ($run.head_branch -ne 'main') {
+            throw "Candidate workflow was not dispatched from main."
+          }
+
+          $artifacts = gh api `
+            "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID/artifacts?per_page=100" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to list candidate artifacts." }
+          $matches = @($artifacts.artifacts | Where-Object {
+              -not $_.expired -and $_.name -like 'release-candidate-*'
+            })
+          if ($matches.Count -ne 1) {
+            throw "Candidate run must contain exactly one non-expired release-candidate artifact."
+          }
+          "artifact_name=$($matches[0].name)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "head_sha=$($run.head_sha)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download candidate without rebuilding
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path '.\dist\verified-candidate' -Force | Out-Null
+          gh run download '${{ inputs.candidate_run_id }}' `
+            --repo '${{ github.repository }}' `
+            --name '${{ steps.run.outputs.artifact_name }}' `
+            --dir '.\dist\verified-candidate'
+          if ($LASTEXITCODE -ne 0) { throw "Unable to download the candidate artifact." }
+
+      - name: Verify manifest, checksums, signature, and frozen commit
+        id: candidate
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          $dir = Resolve-Path '.\dist\verified-candidate'
+          $manifestPath = Join-Path $dir 'candidate-manifest.json'
+          $checksumsPath = Join-Path $dir 'checksums.txt'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $checksumsPath -PathType Leaf)) {
+            throw "Candidate manifest or checksum file is missing."
+          }
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $version = $env:RELEASE_TAG.Substring(1)
+          if ($manifest.schema_version -ne 1 -or
+              $manifest.repository -ne '${{ github.repository }}' -or
+              [string]$manifest.run_id -ne [string]$env:CANDIDATE_RUN_ID -or
+              $manifest.workflow -ne 'build-candidate.yml' -or
+              $manifest.version -ne $version -or
+              $manifest.commit_sha -notmatch '^[0-9a-f]{40}$') {
+            throw "Candidate manifest does not match the requested release."
+          }
+          if ($manifest.commit_sha -ne '${{ steps.run.outputs.head_sha }}') {
+            throw "Candidate manifest commit does not match the workflow run head SHA."
+          }
+
+          $checksummedNames = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal
+          )
+          foreach ($line in Get-Content -LiteralPath $checksumsPath) {
+            if ($line -notmatch '^(?<hash>[0-9a-f]{64})  (?<name>[^\\/]+)$') {
+              throw "Invalid checksum line: $line"
+            }
+            $file = Join-Path $dir $Matches.name
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Checksummed candidate file is missing: $($Matches.name)"
+            }
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $Matches.hash) {
+              throw "SHA-256 mismatch for $($Matches.name)."
+            }
+            $null = $checksummedNames.Add($Matches.name)
+          }
+
+          $required = @(
+            'bsl-indexer.exe',
+            'code-index-045-contract.json',
+            'prism-1c-eval.json',
+            'prism-1c-eval.md',
+            "1c-ai-workbench-setup-$version.exe"
+          )
+          foreach ($name in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)) {
+              throw "Required release asset is missing: $name"
+            }
+            if (-not $checksummedNames.Contains($name)) {
+              throw "Required release asset is not covered by checksums.txt: $name"
+            }
+          }
+          if (-not $checksummedNames.Contains('candidate-manifest.json')) {
+            throw "Candidate manifest is not covered by checksums.txt."
+          }
+
+          $installer = Join-Path $dir "1c-ai-workbench-setup-$version.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
+            throw "Verified candidate has an invalid signature or missing RFC 3161 timestamp."
+          }
+          if ($signature.SignerCertificate.Thumbprint -ne $manifest.signer_thumbprint -or
+              $signature.SignerCertificate.Subject -ne $manifest.signer_subject) {
+            throw "Candidate signer does not match the signed manifest."
+          }
+
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch origin/main." }
+          git cat-file -e "$($manifest.commit_sha)^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Candidate commit is not available in the repository." }
+          git merge-base --is-ancestor $manifest.commit_sha origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Candidate commit is not an ancestor of current origin/main."
+          }
+
+          "commit_sha=$($manifest.commit_sha)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$version" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Create or validate immutable annotated tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch release tags." }
+          $existing = git tag --list $env:RELEASE_TAG
+          if ($existing) {
+            $tagCommit = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+            if ($tagCommit -ne $env:RELEASE_COMMIT) {
+              throw "Existing tag $env:RELEASE_TAG points to $tagCommit, not $env:RELEASE_COMMIT."
+            }
+          } else {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a $env:RELEASE_TAG $env:RELEASE_COMMIT `
+              -m "1C AI Workbench $env:RELEASE_TAG"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to create annotated release tag." }
+            git push origin "refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to publish immutable release tag." }
+          }
+
+      - name: Publish exact verified assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERIFICATION_RECORD: ${{ inputs.verification_record }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_COMMIT: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release $env:RELEASE_TAG already exists; assets will not be overwritten."
+          }
+          $dir = Resolve-Path '.\dist\verified-candidate'
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          @"
+          Signed Windows release produced without rebuilding the verified candidate.
+
+          - Commit: ``$env:RELEASE_COMMIT``
+          - Candidate workflow run: ``$env:CANDIDATE_RUN_ID``
+          - Clean-Windows verification: $env:VERIFICATION_RECORD
+          - Integrity manifest: ``checksums.txt``
+
+          SmartScreen behavior is recorded in the verification evidence and is
+          evaluated independently from Authenticode validity.
+          "@ | Set-Content -LiteralPath $notes -Encoding utf8
+
+          $assets = Get-ChildItem -LiteralPath $dir -File |
+            Sort-Object Name |
+            ForEach-Object { $_.FullName }
+          gh release create $env:RELEASE_TAG $assets `
+            --repo '${{ github.repository }}' `
+            --verify-tag `
+            --title "1C AI Workbench $env:RELEASE_TAG" `
+            --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed." }

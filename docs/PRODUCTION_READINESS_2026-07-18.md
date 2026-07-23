@@ -62,18 +62,24 @@ separate disposable environments and are not production dependencies.
 ## Remaining production plan
 
 1. Obtain the approved production Authenticode certificate and configure the
-   protected GitHub signing secrets or hardware-backed signer.
-2. Merge only after CI and CodeQL are green on the same reviewed head SHA.
-3. Create the immutable release tag, build and sign the installer, publish the
-   indexer plus evaluation reports and checksums, then write the exact tag/SHA
-   pin back to `setup.ps1` and rerun CI.
-4. Validate the signed installer on a clean supported Windows host and record
-   signer chain, RFC 3161 timestamp, and SmartScreen behavior.
-5. After public release, run MXL and OData pilots only in disposable isolated
+   protected `release-candidate` environment.
+2. Merge only after CI and CodeQL are green on the same reviewed head SHA, then
+   freeze the resulting `main` commit.
+3. Run `build-candidate.yml` for that exact commit. It signs, tests, and uploads
+   one immutable candidate artifact without creating a tag or GitHub Release.
+4. Validate that exact artifact on clean Windows 10 and Windows 11 hosts and
+   record the signer chain, RFC 3161 timestamp, SmartScreen behavior, functional
+   smoke, and uninstall result.
+5. Approve `publish-verified.yml` through the protected `production-release`
+   environment. It verifies provenance and checksums, creates the immutable tag,
+   and publishes the downloaded candidate without rebuilding it.
+6. Write the published tag/SHA pin back to `setup.ps1` on the next development
+   commit and rerun CI; never move the published tag.
+7. After public release, run MXL and OData pilots only in disposable isolated
    environments; promote an adapter only with its own contract and rollback.
-6. Refresh `cc-1c-skills` in reviewed capability slices, never as an unreviewed
+8. Refresh `cc-1c-skills` in reviewed capability slices, never as an unreviewed
    150-commit bulk import.
 
-Public production readiness is achieved only after steps 1–4 pass. Until then,
+Public production readiness is achieved only after steps 1–5 pass. Until then,
 the draft pull request must remain draft and no unsigned installer should be
 published as production.

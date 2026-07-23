@@ -12,8 +12,10 @@ Workbench зеркалирует XML-выгрузку 1С, локально ин
 Cursor, VS Code, desktop MCP client или любой клиент, поддерживающий stdio
 MCP-серверы.
 
-Prebuilt `bsl-indexer.exe` публикуется на каждый тег `v*` в разделе
-[Releases](../../releases).
+Production assets публикуются только после двухфазного signed-candidate
+процесса: сборка и подпись, проверка тех же файлов на чистой Windows, затем
+публикация без пересборки. Контракт процесса описан в
+[`docs/RELEASE_CONTRACT_V1.md`](docs/RELEASE_CONTRACT_V1.md).
 
 ## Текущий статус
 
@@ -22,7 +24,7 @@ Workbench готов для локального read-only использова�
 | Метрика | Цель | Факт |
 | --- | --- | --- |
 | `scripts/06_healthcheck.ps1` | 6/6 Ready | 6/6 Ready |
-| `python -m pytest -q` | all green | 62/62 passed |
+| `python -m pytest -q` | all green | 67/67 passed |
 | `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | PASS: 8 / FAIL: 0 / SKIP: 1 |
 | `bsl-indexer.exe` (Rust) | built & in release | 25.6 MB |
 
