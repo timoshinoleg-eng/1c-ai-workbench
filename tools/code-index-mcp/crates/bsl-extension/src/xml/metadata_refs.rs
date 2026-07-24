@@ -536,7 +536,9 @@ mod tests {
         // Пустой состав — пустой список.
         let empty = r#"<MetaDataObject><FunctionalOption><Properties><Name>ФО</Name>
           <Location>Constant.ФО</Location><Content/></Properties></FunctionalOption></MetaDataObject>"#;
-        assert!(parse_functional_option_content_xml(empty).unwrap().is_empty());
+        assert!(parse_functional_option_content_xml(empty)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

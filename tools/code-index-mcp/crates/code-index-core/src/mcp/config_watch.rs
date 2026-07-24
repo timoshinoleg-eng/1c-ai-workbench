@@ -94,9 +94,7 @@ async fn run_watch(server: CodeIndexServer, daemon_toml_path: PathBuf) -> Result
                 // конкретный kind — на Windows write часто приходит как
                 // Modify(Any), на Linux может быть и Create при atomic-rename.
                 if !events.is_empty() {
-                    if let Err(e) =
-                        reload_from_disk(&server, &daemon_toml_path).await
-                    {
+                    if let Err(e) = reload_from_disk(&server, &daemon_toml_path).await {
                         tracing::warn!(
                             "config_watch: не удалось применить изменения {}: {}",
                             daemon_toml_path.display(),
@@ -156,7 +154,13 @@ fn build_debouncer(
 
     debouncer
         .watch(parent.as_path(), RecursiveMode::NonRecursive)
-        .map_err(|e| anyhow::anyhow!("config_watch: не удалось watch '{}': {}", parent.display(), e))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "config_watch: не удалось watch '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     Ok(debouncer)
 }
 

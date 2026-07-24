@@ -166,11 +166,9 @@ impl IndexTool for FindPathBslTool {
                 LIMIT 1
             ";
 
-            let row = conn.query_row(
-                sql,
-                params!["default", &from, max_depth, &to],
-                |r| r.get::<_, String>(0),
-            );
+            let row = conn.query_row(sql, params!["default", &from, max_depth, &to], |r| {
+                r.get::<_, String>(0)
+            });
 
             let result_value = match row {
                 Ok(path_json) => {

@@ -136,7 +136,11 @@ impl IndexTool for GetDataLinksTool {
                         result["out_total"] = json!(total);
                         result["out_truncated"] = json!(truncated);
                     }
-                    Err(e) => return crate::tools::wrap_error(json!({"error": format!("database error (out): {}", e)})),
+                    Err(e) => {
+                        return crate::tools::wrap_error(
+                            json!({"error": format!("database error (out): {}", e)}),
+                        )
+                    }
                 }
             }
             if direction == "in" || direction == "both" {
@@ -146,7 +150,11 @@ impl IndexTool for GetDataLinksTool {
                         result["in_total"] = json!(total);
                         result["in_truncated"] = json!(truncated);
                     }
-                    Err(e) => return crate::tools::wrap_error(json!({"error": format!("database error (in): {}", e)})),
+                    Err(e) => {
+                        return crate::tools::wrap_error(
+                            json!({"error": format!("database error (in): {}", e)}),
+                        )
+                    }
                 }
             }
 

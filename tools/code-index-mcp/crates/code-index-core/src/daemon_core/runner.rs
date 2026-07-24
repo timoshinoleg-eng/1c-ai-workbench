@@ -111,8 +111,7 @@ pub async fn run(processor_registry: Option<Arc<ProcessorRegistry>>) -> Result<(
     // Event-based cache invalidation (этап 3, v0.9.1+): создаём один общий
     // CacheClient на все workers, передаём как `Option<Arc<_>>`. Пустой
     // `cache_targets` → None (внутренний путь invalidate отключён).
-    let cache_target_urls: Vec<String> =
-        cfg.cache_targets.iter().map(|t| t.url.clone()).collect();
+    let cache_target_urls: Vec<String> = cfg.cache_targets.iter().map(|t| t.url.clone()).collect();
     let cache_client = if cache_target_urls.is_empty() {
         None
     } else {
@@ -254,8 +253,7 @@ async fn handle_reload(
     // использовать свой (захваченный при старте) client, новые получают
     // обновлённый. После полного рестарта demon все workers будут на
     // одной актуальной версии.
-    let cache_target_urls: Vec<String> =
-        cfg.cache_targets.iter().map(|t| t.url.clone()).collect();
+    let cache_target_urls: Vec<String> = cfg.cache_targets.iter().map(|t| t.url.clone()).collect();
     let reload_cache_client = if cache_target_urls.is_empty() {
         None
     } else {
@@ -284,9 +282,7 @@ async fn handle_reload(
     let note = if removed.is_empty() {
         None
     } else {
-        Some(
-            "Удаление папок применится после рестарта демона (MVP-ограничение)".into(),
-        )
+        Some("Удаление папок применится после рестарта демона (MVP-ограничение)".into())
     };
 
     ReloadResponse {

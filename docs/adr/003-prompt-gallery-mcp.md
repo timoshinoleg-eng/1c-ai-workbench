@@ -9,6 +9,7 @@ Prompt gallery существует как набор Markdown-файлов в `
 prompt в чат.
 
 **Рассмотренные варианты:**
+
 1. Вариант A — оставить prompts как файлы и документировать ручное копирование.
 2. Вариант B — сделать отдельный FastMCP wrapper, который регистрирует каждый
    `prompts/*.md` как callable tool.
@@ -23,6 +24,7 @@ prompt в чат.
 пытаются дублировать analyzer/runtime логику.
 
 **Последствия:**
+
 - Добавлен `tools/prompt-gallery/`.
 - Добавлен check script `scripts/18_check_prompt_gallery.ps1`.
 - Добавлена integration card `docs/phase-a/integration-cards/prompt-gallery.md`.
@@ -30,6 +32,7 @@ prompt в чат.
 - Prompt count теперь определяется live-директорией `prompts/*.md`.
 
 **Compliance с BORROWING_MAP:**
+
 - Есть ли заимствование? нет, используются локальные prompts проекта.
 - Если да — указана ли лицензия? не применимо.
 - Нарушает ли границы? нет, сервер read-only и не меняет исходники.

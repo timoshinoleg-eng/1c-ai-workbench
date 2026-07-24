@@ -8,6 +8,7 @@ Workbench Phase A работает по read-only XML dump. Для Phase B ну�
 EDT/project flows без COM Eval и без ручного Configurator export.
 
 **Рассмотренные варианты:**
+
 1. Вариант A — вызывать `ibcmd` вручную из runbook.
 2. Вариант B — сделать отдельный MCP wrapper вокруг `ibcmd`, выключенный по
    умолчанию и безопасный по write-gate.
@@ -23,6 +24,7 @@ EDT/project flows без COM Eval и без ручного Configurator export.
 XML-выгрузкам, а импорт требует `IBCMD_ALLOW_WRITE=1` и `confirm_replace=true`.
 
 **Последствия:**
+
 - Добавлен experimental MCP server `tools/ibcmd-bridge`.
 - Добавлен check script `scripts/17_check_ibcmd_bridge.ps1`.
 - Добавлена integration card `docs/phase-a/integration-cards/ibcmd-bridge.md`.
@@ -31,6 +33,7 @@ XML-выгрузкам, а импорт требует `IBCMD_ALLOW_WRITE=1` и 
 - `ibcmd.exe` не бандлится и должен быть установлен отдельно.
 
 **Compliance с BORROWING_MAP:**
+
 - Есть ли заимствование? нет кода; есть интеграция с внешней proprietary CLI.
 - Если да — указана ли лицензия? источник и границы указаны в integration card.
 - Нарушает ли границы? нет, бинарник не поставляется, live mode отключен по

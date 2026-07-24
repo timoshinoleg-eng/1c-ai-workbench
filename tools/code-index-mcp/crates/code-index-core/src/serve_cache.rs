@@ -19,8 +19,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 /// Запись кэша: сериализованный payload + момент истечения TTL.
@@ -148,7 +148,8 @@ impl ServeCache {
         // Обратный индекс этого репо больше не нужен.
         self.reverse.write().unwrap().retain(|(r, _), _| r != scope);
         if removed > 0 {
-            self.invalidations.fetch_add(removed as u64, Ordering::Relaxed);
+            self.invalidations
+                .fetch_add(removed as u64, Ordering::Relaxed);
         }
         removed
     }
@@ -164,7 +165,8 @@ impl ServeCache {
         drop(guard);
         self.reverse.write().unwrap().clear();
         self.dirty.write().unwrap().clear();
-        self.invalidations.fetch_add(removed as u64, Ordering::Relaxed);
+        self.invalidations
+            .fetch_add(removed as u64, Ordering::Relaxed);
         removed
     }
 
@@ -348,8 +350,18 @@ mod tests {
         // Кэш: ключ k_x зависит от X, k_y — от Y.
         let k_x = ServeCache::key("ut", "get_function", &json!({"name": "x"}));
         let k_y = ServeCache::key("ut", "get_function", &json!({"name": "y"}));
-        c.insert(k_x.clone(), Arc::new("a".into()), "ut", &["src/X.bsl".to_string()]);
-        c.insert(k_y.clone(), Arc::new("b".into()), "ut", &["src/Y.bsl".to_string()]);
+        c.insert(
+            k_x.clone(),
+            Arc::new("a".into()),
+            "ut",
+            &["src/X.bsl".to_string()],
+        );
+        c.insert(
+            k_y.clone(),
+            Arc::new("b".into()),
+            "ut",
+            &["src/Y.bsl".to_string()],
+        );
         // Инвалидация по X сносит только ключ X, не Y.
         assert_eq!(c.invalidate_files("ut", &["src/X.bsl".to_string()]), 1);
         assert!(c.get(&k_x).is_none());

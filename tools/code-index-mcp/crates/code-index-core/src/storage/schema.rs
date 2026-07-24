@@ -178,13 +178,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_text_files USING fts5(
 /// Используется при массовой первичной загрузке — индексы создаются после INSERT,
 /// что значительно ускоряет процесс (один проход вместо инкрементальных обновлений).
 pub fn initialize_tables_only(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         PRAGMA journal_mode=WAL;
         PRAGMA synchronous=NORMAL;
         PRAGMA foreign_keys=ON;
         PRAGMA cache_size=-64000;
         PRAGMA mmap_size=268435456;
-    ")?;
+    ",
+    )?;
     // Только таблицы + FTS-виртуальные таблицы — без INDEXES_SQL и TRIGGERS_SQL
     conn.execute_batch(SQL_SCHEMA)?;
     migrate_v2(conn)?;
@@ -252,9 +254,7 @@ pub fn migrate_v2(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
 /// Миграция v3: добавить колонки mtime/file_size в таблицу files для mtime pre-filter.
 /// Безопасно вызывать повторно — проверяет наличие колонки перед ALTER.
 pub fn migrate_v3(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let has_col = conn
-        .prepare("SELECT mtime FROM files LIMIT 0")
-        .is_ok();
+    let has_col = conn.prepare("SELECT mtime FROM files LIMIT 0").is_ok();
     if !has_col {
         conn.execute_batch(
             "ALTER TABLE files ADD COLUMN mtime INTEGER;
@@ -367,12 +367,13 @@ pub fn migrate_v5(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Удалить все обычные индексы и FTS-триггеры (перед bulk-load).
+/// Удалить обычные B-tree индексы (перед bulk-load), НЕ трогая FTS-триггеры.
 ///
 /// Вызывается перед массовой загрузкой данных, чтобы ускорить INSERT:
-/// без индексов и триггеров вставка работает значительно быстрее.
-pub fn drop_indexes_and_triggers(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("
+/// без индексов вставка работает значительно быстрее.
+pub fn drop_indexes(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "
         -- Удаляем индексы на таблице files
         DROP INDEX IF EXISTS idx_files_path;
         DROP INDEX IF EXISTS idx_files_hash;
@@ -399,7 +400,22 @@ pub fn drop_indexes_and_triggers(conn: &rusqlite::Connection) -> rusqlite::Resul
         -- Удаляем индексы на таблице variables
         DROP INDEX IF EXISTS idx_variables_name;
         DROP INDEX IF EXISTS idx_variables_file;
+    ",
+    )?;
+    Ok(())
+}
 
+/// Удалить FTS-триггеры (functions/classes), НЕ трогая B-tree индексы.
+///
+/// Нужно ДО пакетного DELETE старых строк при bulk-обновлении непустой БД:
+/// иначе каждый удаляемый ряд построчно дёргает fts_*_delete-триггер (скрытый
+/// тормоз). FTS всё равно перестраивается целиком в rebuild_indexes_and_triggers().
+/// text_files-триггеров с migrate_v5 нет (указатель fts_text_files стал
+/// contentless и наполняется из Rust), но DROP IF EXISTS оставлен для БД,
+/// не прошедших миграцию.
+pub fn drop_fts_triggers(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "
         -- Удаляем FTS-триггеры functions
         DROP TRIGGER IF EXISTS fts_functions_insert;
         DROP TRIGGER IF EXISTS fts_functions_delete;
@@ -410,11 +426,22 @@ pub fn drop_indexes_and_triggers(conn: &rusqlite::Connection) -> rusqlite::Resul
         DROP TRIGGER IF EXISTS fts_classes_delete;
         DROP TRIGGER IF EXISTS fts_classes_update;
 
-        -- Удаляем FTS-триггеры text_files
+        -- Удаляем FTS-триггеры text_files (совместимость с домиграционными БД)
         DROP TRIGGER IF EXISTS fts_text_files_insert;
         DROP TRIGGER IF EXISTS fts_text_files_delete;
         DROP TRIGGER IF EXISTS fts_text_files_update;
-    ")?;
+    ",
+    )?;
+    Ok(())
+}
+
+/// Удалить все обычные индексы и FTS-триггеры (перед bulk-load).
+///
+/// Композиция [`drop_indexes`] + [`drop_fts_triggers`]. Сохранена как единая
+/// точка вызова для первичной bulk-индексации (свежая БД).
+pub fn drop_indexes_and_triggers(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    drop_indexes(conn)?;
+    drop_fts_triggers(conn)?;
     Ok(())
 }
 
@@ -435,10 +462,12 @@ pub fn rebuild_indexes_and_triggers(conn: &rusqlite::Connection) -> rusqlite::Re
     // fts_text_files НЕ перестраиваем через 'rebuild' — он contentless, таблицы-
     // источника для rebuild у него нет. Его наполняет Rust-путь записи
     // text_contents (в т.ч. при bulk-load), поэтому к этому моменту он уже полон.
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         INSERT INTO fts_functions(fts_functions) VALUES('rebuild');
         INSERT INTO fts_classes(fts_classes) VALUES('rebuild');
-    ")?;
+    ",
+    )?;
 
     Ok(())
 }

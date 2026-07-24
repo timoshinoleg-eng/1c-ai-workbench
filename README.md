@@ -12,18 +12,20 @@ Workbench зеркалирует XML-выгрузку 1С, локально ин
 Cursor, VS Code, desktop MCP client или любой клиент, поддерживающий stdio
 MCP-серверы.
 
-Prebuilt `bsl-indexer.exe` публикуется на каждый тег `v*` в разделе
-[Releases](../../releases).
+Production assets публикуются только после двухфазного signed-candidate
+процесса: сборка и подпись, проверка тех же файлов на чистой Windows, затем
+публикация без пересборки. Контракт процесса описан в
+[`docs/RELEASE_CONTRACT_V1.md`](docs/RELEASE_CONTRACT_V1.md).
 
 ## Текущий статус
 
 Workbench готов для локального read-only использования.
 
 | Метрика | Цель | Факт |
-|---|---|---|
+| --- | --- | --- |
 | `scripts/06_healthcheck.ps1` | 6/6 Ready | 6/6 Ready |
-| `python -m pytest -q` | all green | 62/62 passed |
-| `scripts/22_run_e2e_smoke.ps1` | all green | 9/9 PASS |
+| `python -m pytest -q` | all green | 67/67 passed |
+| `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | PASS: 8 / FAIL: 0 / SKIP: 1 |
 | `bsl-indexer.exe` (Rust) | built & in release | 25.6 MB |
 
 ## Что решает
@@ -42,7 +44,7 @@ Workbench готов для локального read-only использова�
 
 ## Архитектура
 
-```
+```text
 XML-выгрузка 1С
   C:\1c-ai-client\dump
         |
@@ -76,21 +78,21 @@ mirror. Исходная выгрузка не изменяется, live write 
 - PowerShell 5.1+.
 - Git for Windows.
 - Python 3.10+ для Python MCP bridges.
-- Доступ к GitHub Releases для загрузки prebuilt `bsl-indexer.exe`
-  через `scripts\setup.ps1` либо уже распакованный release/partner ZIP.
+- Подписанный installer с prebuilt `bsl-indexer.exe`, проверенный release artifact
+  либо Rust toolchain для сборки индексатора из исходников.
 - Файлы выгрузки конфигурации 1С в `C:\1c-ai-client\dump`.
 - Опционально: Rust toolchain с `cargo` и `rustc`, если нужно пересобрать
   `bsl-indexer` из исходников.
 
 `scripts\setup.ps1` создаёт `.venv`, ставит зависимости bridge-серверов и
-скачивает `tools\code-index-mcp\target\release\bsl-indexer.exe` из release
-`v0.9.0-pilot` с SHA256-проверкой.
+принимает только `code-index 0.45.0`. Автозагрузка разрешается лишь с явно
+переданными `-ReleaseTag` и `-IndexerSha256`; отсутствующий pin падает закрыто.
 
 ## Быстрый старт
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\16_check_skills_bridge.ps1
 .\scripts\17_check_ibcmd_bridge.ps1
@@ -110,7 +112,7 @@ cd C:\1c-ai-workbench
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-cd C:\1c-ai-workbench
+cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\01_check_env.ps1
 .\scripts\02_clone_repos.ps1
@@ -208,6 +210,7 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 границы заимствований описаны в `docs/legal/BORROWING_MAP.md`.
 
 Ключевые источники:
+
 - `cc-1c-skills` от Nikolay-Shirokov, MIT
 - BSL Language Server
 - OneScript

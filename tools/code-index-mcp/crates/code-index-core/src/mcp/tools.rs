@@ -73,7 +73,10 @@ pub(crate) const HINT_GET_EMPTY: &str = "0 символов с таким ТОЧ
 /// get_callers / get_callees вернул 0 рёбер.
 pub(crate) const HINT_CALL_GRAPH_EMPTY: &str = "0 рёбер в графе вызовов. Имя должно быть ТОЧНЫМ \
 (без скобок и имени модуля-владельца) — проверьте через get_function/find_symbol. \
-Пусто также когда функцию реально никто не вызывает / она ничего не вызывает.";
+Пусто также когда функцию реально никто не вызывает / она ничего не вызывает. \
+ВАЖНО: 0 вызовов ≠ мёртвый код — функция может вызываться ДИНАМИЧЕСКИ \
+(Выполнить/Вычислить со сборкой имени из строк, типовой паттерн диспетчеров) — \
+проверьте grep_code по фрагменту имени: он найдёт и строковые литералы.";
 
 /// list_files вернул 0 файлов.
 pub(crate) const HINT_LIST_FILES_EMPTY: &str = "0 файлов. pattern — glob от корня репо \
@@ -119,10 +122,12 @@ pub(crate) const HINT_GREP_BODY_EMPTY: &str = "0 совпадений в тел�
 regex с гибким пробелом, напр. Объект\\s*\\.\\s*Поле. Тексты запросов внутри строк — это тоже тело, \
 ищите по одному слову, не по всей цепочке.";
 /// grep_text вернул 0 совпадений.
-pub(crate) const HINT_GREP_TEXT_EMPTY: &str = "0 совпадений в text-файлах (xml/md/yaml/json/toml). \
+pub(crate) const HINT_GREP_TEXT_EMPTY: &str =
+    "0 совпадений в text-файлах (xml/md/yaml/json/toml). \
 Для кода .bsl/.py/.rs и т.п. — grep_code(regex=…) или grep_body. Проверьте path_glob=/language=.";
 /// search_text вернул 0 совпадений.
-pub(crate) const HINT_SEARCH_TEXT_EMPTY: &str = "0 совпадений в text-файлах. Это нечёткий FTS-поиск по словам. \
+pub(crate) const HINT_SEARCH_TEXT_EMPTY: &str =
+    "0 совпадений в text-файлах. Это нечёткий FTS-поиск по словам. \
 Для regex по тексту — grep_text(regex=…); для кода — grep_code(regex=…)/grep_body.";
 
 // ── BSL-варианты пустых hint'ов поиска процедур (бенч 11.06) ────────────────
@@ -157,22 +162,37 @@ search_terms(query=…) идёт по ДРУГОМУ, триграммному F
 
 /// Выбор hint'а пустого grep_code по языку репо.
 pub(crate) fn grep_code_empty_hint(language: Option<&str>) -> &'static str {
-    if language == Some("bsl") { HINT_GREP_CODE_EMPTY_BSL } else { HINT_GREP_CODE_EMPTY }
+    if language == Some("bsl") {
+        HINT_GREP_CODE_EMPTY_BSL
+    } else {
+        HINT_GREP_CODE_EMPTY
+    }
 }
 /// Выбор hint'а пустого grep_body по языку репо.
 pub(crate) fn grep_body_empty_hint(language: Option<&str>) -> &'static str {
-    if language == Some("bsl") { HINT_GREP_BODY_EMPTY_BSL } else { HINT_GREP_BODY_EMPTY }
+    if language == Some("bsl") {
+        HINT_GREP_BODY_EMPTY_BSL
+    } else {
+        HINT_GREP_BODY_EMPTY
+    }
 }
 /// Выбор hint'а пустого find_symbol по языку репо.
 pub(crate) fn find_symbol_empty_hint(language: Option<&str>) -> &'static str {
-    if language == Some("bsl") { HINT_FIND_SYMBOL_EMPTY_BSL } else { HINT_FIND_SYMBOL_EMPTY }
+    if language == Some("bsl") {
+        HINT_FIND_SYMBOL_EMPTY_BSL
+    } else {
+        HINT_FIND_SYMBOL_EMPTY
+    }
 }
 
 /// Сериализовать `ToolUnavailable` в JSON-строку.
 pub fn format_unavailable(value: ToolUnavailable) -> String {
     match serde_json::to_string(&value) {
         Ok(s) => s,
-        Err(e) => format!("{{\"status\":\"error\",\"message\":\"Сериализация: {}\"}}", e),
+        Err(e) => format!(
+            "{{\"status\":\"error\",\"message\":\"Сериализация: {}\"}}",
+            e
+        ),
     }
 }
 
@@ -442,10 +462,7 @@ pub(crate) fn build_path_matcher(glob: &str) -> Result<globset::GlobMatcher, Str
 /// Lookup пути по file_id через storage. Любая ошибка/отсутствие → пустая строка
 /// (она не пройдёт ни один matcher, так что результат честно отбросится).
 /// Storage уже заблокирован вызывающей стороной (передаётся через `&MutexGuard`).
-pub(crate) fn lookup_path(
-    storage: &crate::storage::Storage,
-    file_id: i64,
-) -> String {
+pub(crate) fn lookup_path(storage: &crate::storage::Storage, file_id: i64) -> String {
     storage
         .get_path_by_file_id(file_id)
         .ok()
@@ -538,8 +555,11 @@ pub async fn search_function(
             }
             let deps = collect_paths_via(&storage, &r, |fr| fr.file_id);
             // W-бенч 11.06: на BSL-репо пустой результат ведёт в search_terms.
-            let hint =
-                if r.is_empty() { Some(search_empty_hint(entry.language.as_deref())) } else { None };
+            let hint = if r.is_empty() {
+                Some(search_empty_hint(entry.language.as_deref()))
+            } else {
+                None
+            };
             // Поисковая выдача БЕЗ тел функций: только имя/путь/строки/сигнатура +
             // обрезанный docstring. Полные тела 20 результатов раздували ответ до
             // 20-45K символов (слабое место прогона УТ-11). Тело — get_function.
@@ -579,7 +599,11 @@ pub async fn search_class(
                 r.truncate(want);
             }
             let deps = collect_paths_via(&storage, &r, |cr| cr.file_id);
-            let hint = if r.is_empty() { Some(HINT_SEARCH_EMPTY) } else { None };
+            let hint = if r.is_empty() {
+                Some(HINT_SEARCH_EMPTY)
+            } else {
+                None
+            };
             // Поисковая выдача БЕЗ тел классов: имя/путь/строки/базы + обрезанный
             // docstring. Тело — get_class/read_file.
             let hits: Vec<serde_json::Value> = r
@@ -640,11 +664,7 @@ fn cap_record_body(
     record
 }
 
-pub async fn get_function(
-    entry: &RepoEntry,
-    name: String,
-    path_glob: Option<String>,
-) -> String {
+pub async fn get_function(entry: &RepoEntry, name: String, path_glob: Option<String>) -> String {
     bail_if_not_ready!(entry);
     let storage = acquire_storage!(entry);
     get_function_with(&storage, name, path_glob)
@@ -659,6 +679,14 @@ pub fn get_function_with(
 ) -> String {
     match storage.get_function_by_name(&name) {
         Ok(mut r) => {
+            // Точное совпадение пусто → регистронезависимый fallback (кириллица:
+            // точный поиск побайтовый, регистр не фолдит). Частый класс ошибок
+            // на BSL-репо: lowercase-имя из памяти модели. См. get_function_by_name_ci.
+            if r.is_empty() {
+                if let Ok(ci) = storage.get_function_by_name_ci(&name) {
+                    r = ci;
+                }
+            }
             if let Some(ref g) = path_glob {
                 let matcher = match build_path_matcher(g) {
                     Ok(m) => m,
@@ -684,7 +712,17 @@ pub fn get_function_with(
                 });
                 return wrap_with_meta_extra(storage, &hits, deps, Some(extra));
             }
-            let hint = if r.is_empty() { Some(HINT_GET_EMPTY) } else { None };
+            if r.is_empty() {
+                // 0 после точного и ci-поиска → did_you_mean с похожими именами
+                // (префикс-LIKE + FTS, ранжирование Левенштейном). Экономит модели
+                // повторные слепые вызовы с вариациями имени.
+                let sugg = storage.suggest_function_names(&name, 5).unwrap_or_default();
+                let mut extra = serde_json::json!({ "hint": HINT_GET_EMPTY });
+                if !sugg.is_empty() {
+                    extra["did_you_mean"] = serde_json::json!(sugg);
+                }
+                return wrap_with_meta_extra(storage, &r, deps, Some(extra));
+            }
             // Навигационный кап оверсайз-тел (защита от disk-offload у клиента).
             let records: Vec<serde_json::Value> = r
                 .iter()
@@ -698,17 +736,13 @@ pub fn get_function_with(
                     )
                 })
                 .collect();
-            wrap_with_meta_hint(storage, &records, deps, hint)
+            wrap_with_meta_hint(storage, &records, deps, None)
         }
         Err(e) => format!("{{\"error\": \"get_function: {}\"}}", e),
     }
 }
 
-pub async fn get_class(
-    entry: &RepoEntry,
-    name: String,
-    path_glob: Option<String>,
-) -> String {
+pub async fn get_class(entry: &RepoEntry, name: String, path_glob: Option<String>) -> String {
     bail_if_not_ready!(entry);
     let storage = acquire_storage!(entry);
     get_class_with(&storage, name, path_glob)
@@ -722,6 +756,13 @@ pub fn get_class_with(
 ) -> String {
     match storage.get_class_by_name(&name) {
         Ok(mut r) => {
+            // Точное совпадение пусто → регистронезависимый fallback (зеркало
+            // get_function_with). См. get_class_by_name_ci.
+            if r.is_empty() {
+                if let Ok(ci) = storage.get_class_by_name_ci(&name) {
+                    r = ci;
+                }
+            }
             if let Some(ref g) = path_glob {
                 let matcher = match build_path_matcher(g) {
                     Ok(m) => m,
@@ -745,7 +786,15 @@ pub fn get_class_with(
                 });
                 return wrap_with_meta_extra(storage, &hits, deps, Some(extra));
             }
-            let hint = if r.is_empty() { Some(HINT_GET_EMPTY) } else { None };
+            if r.is_empty() {
+                // did_you_mean — зеркало get_function_with.
+                let sugg = storage.suggest_class_names(&name, 5).unwrap_or_default();
+                let mut extra = serde_json::json!({ "hint": HINT_GET_EMPTY });
+                if !sugg.is_empty() {
+                    extra["did_you_mean"] = serde_json::json!(sugg);
+                }
+                return wrap_with_meta_extra(storage, &r, deps, Some(extra));
+            }
             // Навигационный кап оверсайз-тел (защита от disk-offload у клиента).
             let records: Vec<serde_json::Value> = r
                 .iter()
@@ -759,7 +808,7 @@ pub fn get_class_with(
                     )
                 })
                 .collect();
-            wrap_with_meta_hint(storage, &records, deps, hint)
+            wrap_with_meta_hint(storage, &records, deps, None)
         }
         Err(e) => format!("{{\"error\": \"get_class: {}\"}}", e),
     }
@@ -1030,14 +1079,22 @@ pub async fn find_symbol(
                 && r.classes.is_empty()
                 && r.variables.is_empty()
                 && r.imports.is_empty();
-            let hint = if empty { Some(find_symbol_empty_hint(entry.language.as_deref())) } else { None };
+            let hint = if empty {
+                Some(find_symbol_empty_hint(entry.language.as_deref()))
+            } else {
+                None
+            };
             // Навигационная выдача БЕЗ тел (как search_function/search_class): локации символа.
             // Тело конкретного — get_function/get_class. Иначе на горячем имени find_symbol
             // раздувался телами всех совпадений (десятки-сотни K токенов).
             // Cap на ЧИСЛО локаций по каждой категории: на сверхгорячем имени
             // даже локации без тел раздувают ответ. Показываем первые LOCATION_CAP.
-            let (f_total, c_total, v_total, i_total) =
-                (r.functions.len(), r.classes.len(), r.variables.len(), r.imports.len());
+            let (f_total, c_total, v_total, i_total) = (
+                r.functions.len(),
+                r.classes.len(),
+                r.variables.len(),
+                r.imports.len(),
+            );
             let functions: Vec<serde_json::Value> = r
                 .functions
                 .iter()
@@ -1097,7 +1154,8 @@ pub async fn get_imports(
     let storage = acquire_storage!(entry);
     let cap = limit.unwrap_or(IMPORTS_DEFAULT_LIMIT);
     let cap_extra = |total: usize| {
-        (total > cap).then(|| serde_json::json!({ "truncated": true, "total": total, "limit": cap }))
+        (total > cap)
+            .then(|| serde_json::json!({ "truncated": true, "total": total, "limit": cap }))
     };
     if let Some(fid) = file_id {
         return match storage.get_imports_by_file(fid) {
@@ -1395,7 +1453,11 @@ pub async fn search_text(
                 .into_iter()
                 .map(|(path, snippet)| serde_json::json!({ "path": path, "snippet": snippet }))
                 .collect();
-            let hint = if items.is_empty() { Some(HINT_SEARCH_TEXT_EMPTY) } else { None };
+            let hint = if items.is_empty() {
+                Some(HINT_SEARCH_TEXT_EMPTY)
+            } else {
+                None
+            };
             wrap_with_meta_hint(&storage, &items, deps, hint)
         }
         Err(e) => format!("{{\"error\": \"search_text: {}\"}}", e),
@@ -1431,7 +1493,12 @@ pub async fn grep_body(
         )
     } else {
         storage
-            .grep_body(pattern.as_deref(), regex.as_deref(), language.as_deref(), want)
+            .grep_body(
+                pattern.as_deref(),
+                regex.as_deref(),
+                language.as_deref(),
+                want,
+            )
             .map(|r| {
                 let truncated = r.len() >= want;
                 (r, truncated)
@@ -1450,8 +1517,11 @@ pub async fn grep_body(
                 "limit": want,
                 "truncated": truncated,
             });
-            let hint =
-                if shown == 0 { Some(grep_body_empty_hint(entry.language.as_deref())) } else { None };
+            let hint = if shown == 0 {
+                Some(grep_body_empty_hint(entry.language.as_deref()))
+            } else {
+                None
+            };
             wrap_with_meta_hint(&storage, &payload, deps, hint)
         }
         Err(e) => format!("{{\"error\": \"grep_body: {}\"}}", e),
@@ -1564,7 +1634,11 @@ pub async fn grep_text(
                 "limit": want,
                 "truncated": truncated,
             });
-            let hint = if shown == 0 { Some(HINT_GREP_TEXT_EMPTY) } else { None };
+            let hint = if shown == 0 {
+                Some(HINT_GREP_TEXT_EMPTY)
+            } else {
+                None
+            };
             wrap_with_meta_hint(&storage, &payload, deps, hint)
         }
         Err(e) => format!("{{\"error\": \"grep_text: {}\"}}", e),
@@ -1621,7 +1695,10 @@ fn compact_body_matches(
             .collect::<Vec<_>>()
             .join(",");
         if let Some(total) = m.match_count {
-            mls.push_str(&format!(" (+{})", total.saturating_sub(m.match_lines.len())));
+            mls.push_str(&format!(
+                " (+{})",
+                total.saturating_sub(m.match_lines.len())
+            ));
         }
         let locator = format!(
             "{} ({}) L{}-{}: {}",
@@ -1630,7 +1707,10 @@ fn compact_body_matches(
         let arr = acc.entry(m.file_path.clone()).or_default();
         arr.push(serde_json::Value::String(locator));
         for c in &m.context {
-            arr.push(serde_json::Value::String(format!("{}: {}", c.line, c.content)));
+            arr.push(serde_json::Value::String(format!(
+                "{}: {}",
+                c.line, c.content
+            )));
         }
     }
     acc.into_iter()
@@ -1640,9 +1720,7 @@ fn compact_body_matches(
 
 /// list_files: каждый файл — строка "<path> | <lang> | <N> lines | <size>".
 /// mtime НЕ включаем — он уже в _meta.file_mtimes (дублировать = лишние токены).
-fn compact_listed_files(
-    files: &[crate::storage::models::ListedFile],
-) -> Vec<serde_json::Value> {
+fn compact_listed_files(files: &[crate::storage::models::ListedFile]) -> Vec<serde_json::Value> {
     files
         .iter()
         .map(|lf| {
@@ -1695,8 +1773,11 @@ pub async fn grep_code(
                 "limit": want,
                 "truncated": truncated,
             });
-            let hint =
-                if shown == 0 { Some(grep_code_empty_hint(entry.language.as_deref())) } else { None };
+            let hint = if shown == 0 {
+                Some(grep_code_empty_hint(entry.language.as_deref()))
+            } else {
+                None
+            };
             wrap_with_meta_hint(&storage, &payload, deps, hint)
         }
         Err(e) => format!("{{\"error\": \"grep_code: {}\"}}", e),
@@ -1820,18 +1901,37 @@ mod tests {
         assert_eq!(out["body_truncated"], serde_json::json!(true));
         assert_eq!(out["body_lines_total"], serde_json::json!(300));
         let b = out["body"].as_str().unwrap();
-        assert!(b.contains("строка_0") && b.contains("строка_299"), "голова+хвост");
+        assert!(
+            b.contains("строка_0") && b.contains("строка_299"),
+            "голова+хвост"
+        );
         assert!(!b.contains("строка_150"), "середина выкинута");
-        assert!(b.contains("ТЕЛО УСЕЧЕНО") && b.contains("read_file") && b.contains("base/X/Module.bsl"));
+        assert!(
+            b.contains("ТЕЛО УСЕЧЕНО")
+                && b.contains("read_file")
+                && b.contains("base/X/Module.bsl")
+        );
         assert!(b.len() < big.len(), "стаб реально короче тела");
         // 2) малое тело — без изменений
         let small = "малое тело\nвторая".to_string();
-        let out2 = cap_record_body(serde_json::json!({ "body": small.clone() }), &small, "p", 1, 2);
+        let out2 = cap_record_body(
+            serde_json::json!({ "body": small.clone() }),
+            &small,
+            "p",
+            1,
+            2,
+        );
         assert!(out2.get("body_truncated").is_none());
         assert_eq!(out2["body"], serde_json::json!(small));
         // 3) cap=0 → выключено (тело целиком)
         crate::mcp::cap::set_function_body_cap(Some(0));
-        let out3 = cap_record_body(serde_json::json!({ "body": big.clone() }), &big, "p", 1, 300);
+        let out3 = cap_record_body(
+            serde_json::json!({ "body": big.clone() }),
+            &big,
+            "p",
+            1,
+            300,
+        );
         assert!(out3.get("body_truncated").is_none());
         // вернуть дефолт, чтобы не влиять на другие тесты
         crate::mcp::cap::set_function_body_cap(None);
@@ -1853,11 +1953,17 @@ mod tests {
             grep_code_empty_hint(Some("bsl")),
             find_symbol_empty_hint(Some("bsl")),
         ] {
-            assert!(h.contains("search_terms"), "BSL grep/find hint должен звать search_terms");
+            assert!(
+                h.contains("search_terms"),
+                "BSL grep/find hint должен звать search_terms"
+            );
         }
         assert_eq!(grep_body_empty_hint(Some("rust")), HINT_GREP_BODY_EMPTY);
         assert_eq!(grep_code_empty_hint(None), HINT_GREP_CODE_EMPTY);
-        assert_eq!(find_symbol_empty_hint(Some("python")), HINT_FIND_SYMBOL_EMPTY);
+        assert_eq!(
+            find_symbol_empty_hint(Some("python")),
+            HINT_FIND_SYMBOL_EMPTY
+        );
         assert!(!HINT_GREP_BODY_EMPTY.contains("search_terms"));
     }
 
@@ -1913,13 +2019,31 @@ mod tests {
     #[test]
     fn compact_text_matches_no_context() {
         let matches = vec![
-            GrepTextMatch { path: "b.rs".into(), line: 10, content: "ten".into(), context: vec![] },
-            GrepTextMatch { path: "a.rs".into(), line: 5, content: "five".into(), context: vec![] },
-            GrepTextMatch { path: "a.rs".into(), line: 2, content: "two".into(), context: vec![] },
+            GrepTextMatch {
+                path: "b.rs".into(),
+                line: 10,
+                content: "ten".into(),
+                context: vec![],
+            },
+            GrepTextMatch {
+                path: "a.rs".into(),
+                line: 5,
+                content: "five".into(),
+                context: vec![],
+            },
+            GrepTextMatch {
+                path: "a.rs".into(),
+                line: 2,
+                content: "two".into(),
+                context: vec![],
+            },
         ];
         let files = compact_text_matches(&matches);
         let a = files.get("a.rs").unwrap().as_array().unwrap();
-        assert_eq!(a, &vec![serde_json::json!("2: two"), serde_json::json!("5: five")]);
+        assert_eq!(
+            a,
+            &vec![serde_json::json!("2: two"), serde_json::json!("5: five")]
+        );
         let b = files.get("b.rs").unwrap().as_array().unwrap();
         assert_eq!(b, &vec![serde_json::json!("10: ten")]);
         let keys: Vec<&str> = files.keys().map(|s| s.as_str()).collect();
@@ -1935,9 +2059,18 @@ mod tests {
             line: 3,
             content: "MATCH".into(),
             context: vec![
-                ContextLine { line: 2, content: "before".into() },
-                ContextLine { line: 3, content: "ctx-dup".into() },
-                ContextLine { line: 4, content: "after".into() },
+                ContextLine {
+                    line: 2,
+                    content: "before".into(),
+                },
+                ContextLine {
+                    line: 3,
+                    content: "ctx-dup".into(),
+                },
+                ContextLine {
+                    line: 4,
+                    content: "after".into(),
+                },
             ],
         }];
         let files = compact_text_matches(&matches);
@@ -1975,13 +2108,22 @@ mod tests {
                 line_end: 410,
                 match_lines: vec![405],
                 match_count: None,
-                context: vec![ContextLine { line: 405, content: "x = 1;".into() }],
+                context: vec![ContextLine {
+                    line: 405,
+                    content: "x = 1;".into(),
+                }],
             },
         ];
         let files = compact_body_matches(&matches);
         let arr = files.get("doc.bsl").unwrap().as_array().unwrap();
-        assert_eq!(arr[0], serde_json::json!("Провести (function) L120-340: 125,130,200 (+5)"));
-        assert_eq!(arr[1], serde_json::json!("Отменить (function) L400-410: 405"));
+        assert_eq!(
+            arr[0],
+            serde_json::json!("Провести (function) L120-340: 125,130,200 (+5)")
+        );
+        assert_eq!(
+            arr[1],
+            serde_json::json!("Отменить (function) L400-410: 405")
+        );
         assert_eq!(arr[2], serde_json::json!("405: x = 1;"));
     }
 
@@ -1989,11 +2131,26 @@ mod tests {
     #[test]
     fn compact_listed_files_format() {
         let files = vec![
-            ListedFile { path: "src/foo.rs".into(), language: "rust".into(), lines_total: 724, size: Some(28504), mtime: Some(123) },
-            ListedFile { path: "bar.md".into(), language: "markdown".into(), lines_total: 3, size: None, mtime: None },
+            ListedFile {
+                path: "src/foo.rs".into(),
+                language: "rust".into(),
+                lines_total: 724,
+                size: Some(28504),
+                mtime: Some(123),
+            },
+            ListedFile {
+                path: "bar.md".into(),
+                language: "markdown".into(),
+                lines_total: 3,
+                size: None,
+                mtime: None,
+            },
         ];
         let out = compact_listed_files(&files);
-        assert_eq!(out[0], serde_json::json!("src/foo.rs | rust | 724 lines | 28504"));
+        assert_eq!(
+            out[0],
+            serde_json::json!("src/foo.rs | rust | 724 lines | 28504")
+        );
         assert_eq!(out[1], serde_json::json!("bar.md | markdown | 3 lines | ?"));
     }
 }

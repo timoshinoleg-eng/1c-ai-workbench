@@ -171,9 +171,7 @@ impl IndexTool for SearchTermsTool {
             });
 
             let rows: Vec<Value> = match rows_iter {
-                Ok(iter) => iter
-                    .filter_map(|r| r.ok())
-                    .collect(),
+                Ok(iter) => iter.filter_map(|r| r.ok()).collect(),
                 Err(e) => {
                     // Типичная причина — невалидный FTS5 синтаксис в query.
                     // Возвращаем структурированную ошибку, чтобы LLM

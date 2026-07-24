@@ -53,17 +53,20 @@ MCP bridges, and a minimal `opencode.jsonc` directly into the `.exe` via
 `%LOCALAPPDATA%\1c-ai-workbench\embedded\`.
 
 To rebuild only the staging area without a full Tauri compile:
+
 ```powershell
 npm run prepare:embedded
 ```
 
 Test embedded install:
+
 ```powershell
 npm run tauri:build
 .\scripts\test-embedded-install.ps1 -Clean
 ```
 
 Clean staging:
+
 ```powershell
 npm run clean:embedded
 ```
@@ -91,7 +94,7 @@ and exposes typed commands to the React frontend over Tauri's IPC
 bridge. The webview is a Vite-built React SPA; it never talks to MCP
 servers directly.
 
-```
+```text
 +-------------------------------+
 |  Tauri 2.x desktop shell      |
 |  +-------------+   +-------+  |
@@ -132,7 +135,7 @@ mirrors the shape verbatim.
 
 ## Layout
 
-```
+```text
 src/                React + TypeScript SPA
   components/       Layout + shadcn/ui primitives
   pages/            One file per route

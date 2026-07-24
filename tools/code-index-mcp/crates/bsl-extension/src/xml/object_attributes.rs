@@ -168,7 +168,11 @@ pub fn parse_object_attributes_xml(content: &str) -> Result<Vec<DataLinkEdge>> {
                         } else {
                             "attr"
                         };
-                        field = Some(FieldAccum { name: None, kind, types: Vec::new() });
+                        field = Some(FieldAccum {
+                            name: None,
+                            kind,
+                            types: Vec::new(),
+                        });
                     }
                     "Name" => {
                         // Имя поля: внутри текущего field, ещё не взято.
@@ -325,11 +329,8 @@ fn emit_field_edges(f: &FieldAccum, tabular: Option<&str>, out: &mut Vec<DataLin
         _ => return,
     };
     // Классифицируем все типы поля; оставляем только ссылочные.
-    let mut targets: Vec<(String, bool)> = f
-        .types
-        .iter()
-        .filter_map(|t| classify_type(t))
-        .collect();
+    let mut targets: Vec<(String, bool)> =
+        f.types.iter().filter_map(|t| classify_type(t)).collect();
     if targets.is_empty() {
         return;
     }
@@ -878,6 +879,45 @@ pub fn parse_object_header_xml(content: &str) -> Option<(String, String, Option<
     }
 }
 
+/// Извлечь значение `<ObjectBelonging>` из шапки объекта расширения:
+/// `"Adopted"` — объект заимствован из базовой конфигурации, `"Native"` —
+/// собственный объект расширения. `None` — тега нет (объект базовой
+/// конфигурации; в расширении тег присутствует). Прерывается на
+/// `<ChildObjects>` — тег живёт в `<Properties>` шапки, состав читать незачем
+/// (иначе подхватился бы `ObjectBelonging` вложенного реквизита).
+pub fn parse_object_belonging(content: &str) -> Option<String> {
+    let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut want = false;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let local = local_name(&String::from_utf8_lossy(e.name().as_ref()));
+                if local == "ChildObjects" {
+                    break;
+                }
+                // true только для самого тега ObjectBelonging; любой другой
+                // Start сбрасывает флаг (защита от <ObjectBelonging/> без текста).
+                want = local == "ObjectBelonging";
+            }
+            Ok(Event::Text(t)) if want => {
+                let txt = t
+                    .unescape()
+                    .map(|s| s.into_owned())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                return if txt.is_empty() { None } else { Some(txt) };
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    None
+}
+
 pub fn parse_object_structure_xml(content: &str) -> Result<ObjectStructure> {
     let mut reader = Reader::from_str(content);
     reader.config_mut().trim_text(true);
@@ -948,7 +988,9 @@ pub fn parse_object_structure_xml(content: &str) -> Result<ObjectStructure> {
                     // WS-1: свойства проведения документа в корневом <Properties>.
                     // Ловим только вне реквизита (field.is_none()) — эти теги
                     // платформенно-уникальны и не встречаются внутри <Attribute>.
-                    "Posting" | "RealTimePosting" | "RegisterRecordsDeletion"
+                    "Posting"
+                    | "RealTimePosting"
+                    | "RegisterRecordsDeletion"
                     | "RegisterRecordsWritingOnPost" => {
                         if field.is_none() {
                             cur_posting_prop = Some(local.clone());
@@ -976,10 +1018,18 @@ pub fn parse_object_structure_xml(content: &str) -> Result<ObjectStructure> {
                     }
                     // W8: скалярные свойства шапки из белого списка — вне
                     // реквизитов и стандартных атрибутов (там одноимённые теги).
-                    "InformationRegisterPeriodicity" | "WriteMode" | "RegisterType"
-                    | "NumberType" | "NumberLength" | "NumberPeriodicity"
-                    | "CheckUnique" | "Autonumbering" | "Hierarchical"
-                    | "CodeLength" | "DescriptionLength" | "Numerator" => {
+                    "InformationRegisterPeriodicity"
+                    | "WriteMode"
+                    | "RegisterType"
+                    | "NumberType"
+                    | "NumberLength"
+                    | "NumberPeriodicity"
+                    | "CheckUnique"
+                    | "Autonumbering"
+                    | "Hierarchical"
+                    | "CodeLength"
+                    | "DescriptionLength"
+                    | "Numerator" => {
                         if field.is_none() && !in_std_attrs {
                             cur_header_prop = Some(local.clone());
                             text_target = TextTarget::HeaderProp;
@@ -1113,8 +1163,7 @@ pub fn parse_object_structure_xml(content: &str) -> Result<ObjectStructure> {
                                 } else if fb.kind == "Command" {
                                     // W4: команда объекта — имя + синоним
                                     // (только когда отличается от имени).
-                                    let syn =
-                                        fb.synonym.filter(|s| !s.is_empty() && s != &name);
+                                    let syn = fb.synonym.filter(|s| !s.is_empty() && s != &name);
                                     out.commands.push((name, syn));
                                 } else {
                                     let f = StructField {
@@ -1279,6 +1328,28 @@ mod tests {
         assert_eq!(syn2, None);
     }
 
+    #[test]
+    fn parse_belonging_adopted_native_and_absent() {
+        let adopted = r#"<MetaDataObject><Catalog><Properties><Name>Контрагенты</Name><ObjectBelonging>Adopted</ObjectBelonging></Properties></Catalog></MetaDataObject>"#;
+        assert_eq!(parse_object_belonging(adopted).as_deref(), Some("Adopted"));
+
+        let native = r#"<MetaDataObject><Catalog><Properties><Name>МойСпр</Name><ObjectBelonging>Native</ObjectBelonging></Properties></Catalog></MetaDataObject>"#;
+        assert_eq!(parse_object_belonging(native).as_deref(), Some("Native"));
+
+        // Тега нет → None (объект базовой конфигурации).
+        let base = r#"<MetaDataObject><Catalog><Properties><Name>Базовый</Name></Properties></Catalog></MetaDataObject>"#;
+        assert_eq!(parse_object_belonging(base), None);
+
+        // ObjectBelonging вложенного реквизита (внутри ChildObjects) не подхватывается —
+        // break на ChildObjects происходит раньше.
+        let nested = r#"<MetaDataObject><Catalog><Properties><Name>X</Name></Properties><ChildObjects><Attribute><Properties><Name>Поле</Name><ObjectBelonging>Native</ObjectBelonging></Properties></Attribute></ChildObjects></Catalog></MetaDataObject>"#;
+        assert_eq!(
+            parse_object_belonging(nested),
+            None,
+            "break на ChildObjects — реквизитный ObjectBelonging игнорируется"
+        );
+    }
+
     /// Тестовый конструктор поля без синонима/обязательности.
     fn sf(name: &str, type_str: &str) -> StructField {
         StructField {
@@ -1346,7 +1417,10 @@ mod tests {
 
     #[test]
     fn classify_universal_and_defined() {
-        assert_eq!(classify_type("cfg:AnyRef"), Some(("*AnyRef".to_string(), true)));
+        assert_eq!(
+            classify_type("cfg:AnyRef"),
+            Some(("*AnyRef".to_string(), true))
+        );
         assert_eq!(
             classify_type("cfg:CatalogRef"),
             Some(("*CatalogRef".to_string(), true))
@@ -1405,20 +1479,29 @@ mod tests {
         // Поставщик (1) + Контрагент составной (2) = 3 ребра, КодСтроки (примитив) пропущен.
         assert_eq!(edges.len(), 3, "ожидаем 3 ребра, получили {:?}", edges);
 
-        let supplier: Vec<_> = edges.iter().filter(|e| e.from_path == "Поставщик").collect();
+        let supplier: Vec<_> = edges
+            .iter()
+            .filter(|e| e.from_path == "Поставщик")
+            .collect();
         assert_eq!(supplier.len(), 1);
         assert_eq!(supplier[0].to_object, "Catalog.Партнеры");
         assert_eq!(supplier[0].link_kind, "attr");
         assert!(!supplier[0].is_composite);
 
-        let counterparty: Vec<_> = edges.iter().filter(|e| e.from_path == "Контрагент").collect();
+        let counterparty: Vec<_> = edges
+            .iter()
+            .filter(|e| e.from_path == "Контрагент")
+            .collect();
         assert_eq!(counterparty.len(), 2);
         assert!(counterparty.iter().all(|e| e.is_composite));
         let targets: Vec<&str> = counterparty.iter().map(|e| e.to_object.as_str()).collect();
         assert!(targets.contains(&"Catalog.Организации"));
         assert!(targets.contains(&"Catalog.Контрагенты"));
 
-        assert!(edges.iter().all(|e| e.from_path != "КодСтроки"), "примитив не должен давать ребро");
+        assert!(
+            edges.iter().all(|e| e.from_path != "КодСтроки"),
+            "примитив не должен давать ребро"
+        );
     }
 
     #[test]
@@ -1448,9 +1531,17 @@ mod tests {
   </AccumulationRegister>
 </MetaDataObject>"#;
         let edges = parse_object_attributes_xml(xml).unwrap();
-        assert_eq!(edges.len(), 2, "две ссылочные размерности, ресурс числовой пропущен: {:?}", edges);
+        assert_eq!(
+            edges.len(),
+            2,
+            "две ссылочные размерности, ресурс числовой пропущен: {:?}",
+            edges
+        );
         assert!(edges.iter().all(|e| e.link_kind == "register_dim"));
-        let nom = edges.iter().find(|e| e.from_path == "Номенклатура").unwrap();
+        let nom = edges
+            .iter()
+            .find(|e| e.from_path == "Номенклатура")
+            .unwrap();
         assert_eq!(nom.to_object, "Catalog.Номенклатура");
     }
 
@@ -1487,7 +1578,10 @@ mod tests {
         assert_eq!(head.link_kind, "attr");
         assert_eq!(head.to_object, "Catalog.Контрагенты");
 
-        let tab = edges.iter().find(|e| e.from_path == "Товары.Номенклатура").unwrap();
+        let tab = edges
+            .iter()
+            .find(|e| e.from_path == "Товары.Номенклатура")
+            .unwrap();
         assert_eq!(tab.link_kind, "tabular_attr");
         assert_eq!(tab.to_object, "Catalog.Номенклатура");
     }
@@ -1576,7 +1670,10 @@ mod tests {
 
         // Структура объекта: секция owners в attributes_json.
         let st = parse_object_structure_xml(xml).unwrap();
-        assert_eq!(st.owners, vec!["Catalog.Претензии", "Catalog.СделкиСКлиентами"]);
+        assert_eq!(
+            st.owners,
+            vec!["Catalog.Претензии", "Catalog.СделкиСКлиентами"]
+        );
         let js = st.to_json();
         let arr: Vec<&str> = js["owners"]
             .as_array()
@@ -1619,7 +1716,10 @@ mod tests {
         let e = edges.iter().find(|e| e.from_path == "ИНН").unwrap();
         assert_eq!(e.to_object, "*DefinedType.ИНН");
         assert!(e.is_universal);
-        let e2 = edges.iter().find(|e| e.from_path == "ДокументОснование").unwrap();
+        let e2 = edges
+            .iter()
+            .find(|e| e.from_path == "ДокументОснование")
+            .unwrap();
         assert_eq!(e2.to_object, "*DefinedType.ОснованиеСчетФактураВыданный");
     }
 
@@ -1681,7 +1781,9 @@ mod tests {
         assert!(st
             .properties
             .contains(&("InformationRegisterPeriodicity".into(), "Second".into())));
-        assert!(st.properties.contains(&("WriteMode".into(), "RecorderSubordinate".into())));
+        assert!(st
+            .properties
+            .contains(&("WriteMode".into(), "RecorderSubordinate".into())));
         // W13: корневой Type → value_types (включая TypeSet/DefinedType).
         assert_eq!(
             st.value_types,
@@ -1820,7 +1922,11 @@ mod tests {
             types
         );
         let edges = parse_object_attributes_xml(&xml).unwrap();
-        assert_eq!(edges.len(), 1, "патологический перечень схлопнут в один узел");
+        assert_eq!(
+            edges.len(),
+            1,
+            "патологический перечень схлопнут в один узел"
+        );
         assert_eq!(edges[0].to_object, "*Multiple");
         assert!(edges[0].is_universal);
     }
@@ -1850,7 +1956,12 @@ mod tests {
         // to_json: базовые секции пусты, но присутствуют; enum_values заполнен.
         let j = st.to_json();
         let obj = j.as_object().unwrap();
-        assert!(obj.get("attributes").unwrap().as_array().unwrap().is_empty());
+        assert!(obj
+            .get("attributes")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
         assert_eq!(obj.get("enum_values").unwrap().as_array().unwrap().len(), 3);
     }
 
@@ -1873,11 +1984,20 @@ mod tests {
         let j = st.to_json();
         let obj = j.as_object().unwrap();
         for key in ["attributes", "dimensions", "resources", "tabular_sections"] {
-            assert!(obj.contains_key(key), "ключ {} должен присутствовать всегда", key);
+            assert!(
+                obj.contains_key(key),
+                "ключ {} должен присутствовать всегда",
+                key
+            );
             assert!(obj.get(key).unwrap().is_array());
         }
         assert_eq!(obj.get("attributes").unwrap().as_array().unwrap().len(), 1);
-        assert!(obj.get("dimensions").unwrap().as_array().unwrap().is_empty());
+        assert!(obj
+            .get("dimensions")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty());
         // enum_values НЕ эмитится для не-перечисления.
         assert!(!obj.contains_key("enum_values"));
     }

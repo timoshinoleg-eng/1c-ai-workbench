@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 
 use super::types::{
-    sha256_hex, hash_ast,
-    ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport, ParsedVariable,
+    hash_ast, sha256_hex, ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport,
+    ParsedVariable,
 };
 use super::LanguageParser;
 
@@ -37,7 +37,10 @@ fn node_text<'a>(node: tree_sitter::Node<'a>, source: &'a [u8]) -> &'a str {
 }
 
 /// Найти первый дочерний узел с заданным kind
-fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+fn find_child_by_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == kind {
@@ -173,7 +176,14 @@ fn visit_node(
                         visit_type_alias(child, ctx);
                     }
                     "lexical_declaration" | "variable_declaration" => {
-                        visit_variable_declaration(child, ctx, class_name, current_func, node.kind(), depth);
+                        visit_variable_declaration(
+                            child,
+                            ctx,
+                            class_name,
+                            current_func,
+                            node.kind(),
+                            depth,
+                        );
                     }
                     _ => {
                         visit_node(child, ctx, class_name, current_func, node.kind(), depth + 1);
@@ -199,7 +209,8 @@ fn visit_function_declaration(
 ) {
     let source = ctx.source;
 
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -211,12 +222,17 @@ fn visit_function_declaration(
     let line_start = node.start_position().row + 1;
     let line_end = node.end_position().row + 1;
 
-    let args = node.child_by_field_name("parameters")
+    let args = node
+        .child_by_field_name("parameters")
         .map(|n| node_text(n, source).to_string());
 
     // Тип возвращаемого значения: поле return_type
-    let return_type = node.child_by_field_name("return_type")
-        .map(|n| node_text(n, source).trim_start_matches(':').trim().to_string());
+    let return_type = node.child_by_field_name("return_type").map(|n| {
+        node_text(n, source)
+            .trim_start_matches(':')
+            .trim()
+            .to_string()
+    });
 
     let is_async = is_async_node(node, source);
     let docstring = extract_jsdoc(node, source);
@@ -240,7 +256,14 @@ fn visit_function_declaration(
     if let Some(body_node) = node.child_by_field_name("body") {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+                1,
+            );
         }
     }
 }
@@ -254,7 +277,8 @@ fn visit_method_definition(
 ) {
     let source = ctx.source;
 
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -267,13 +291,20 @@ fn visit_method_definition(
     let line_end = node.end_position().row + 1;
 
     // Параметры и return_type могут быть напрямую или через поле value (function)
-    let args = node.child_by_field_name("parameters")
-        .or_else(|| node.child_by_field_name("value")
-            .and_then(|v| v.child_by_field_name("parameters")))
+    let args = node
+        .child_by_field_name("parameters")
+        .or_else(|| {
+            node.child_by_field_name("value")
+                .and_then(|v| v.child_by_field_name("parameters"))
+        })
         .map(|n| node_text(n, source).to_string());
 
-    let return_type = node.child_by_field_name("return_type")
-        .map(|n| node_text(n, source).trim_start_matches(':').trim().to_string());
+    let return_type = node.child_by_field_name("return_type").map(|n| {
+        node_text(n, source)
+            .trim_start_matches(':')
+            .trim()
+            .to_string()
+    });
 
     let is_async = is_async_node(node, source);
     let docstring = extract_jsdoc(node, source);
@@ -295,14 +326,22 @@ fn visit_method_definition(
     });
 
     // Тело метода
-    let body_node = node.child_by_field_name("value")
+    let body_node = node
+        .child_by_field_name("value")
         .and_then(|v| v.child_by_field_name("body"))
         .or_else(|| node.child_by_field_name("body"));
 
     if let Some(body_node) = body_node {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+                1,
+            );
         }
     }
 }
@@ -317,7 +356,8 @@ fn visit_class_node(
 ) {
     let source = ctx.source;
 
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -343,8 +383,10 @@ fn visit_class_node(
                     extends_text
                 }
             })
-            .or_else(|| node.child_by_field_name("implements_clause")
-                .map(|n| node_text(n, source).to_string()))
+            .or_else(|| {
+                node.child_by_field_name("implements_clause")
+                    .map(|n| node_text(n, source).to_string())
+            })
     };
 
     // Для интерфейсов добавляем пометку в bases
@@ -376,7 +418,14 @@ fn visit_class_node(
     if let Some(class_body) = node.child_by_field_name("body") {
         let mut cursor = class_body.walk();
         for child in class_body.children(&mut cursor) {
-            visit_node(child, ctx, Some(&name), current_func, class_body.kind(), depth + 1);
+            visit_node(
+                child,
+                ctx,
+                Some(&name),
+                current_func,
+                class_body.kind(),
+                depth + 1,
+            );
         }
     }
 }
@@ -385,7 +434,8 @@ fn visit_class_node(
 fn visit_type_alias(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let source = ctx.source;
 
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -397,7 +447,8 @@ fn visit_type_alias(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let line_end = node.end_position().row + 1;
 
     // Значение типа
-    let bases = node.child_by_field_name("value")
+    let bases = node
+        .child_by_field_name("value")
         .map(|n| node_text(n, source).to_string());
 
     let body = node_text(node, source).to_string();
@@ -444,7 +495,8 @@ fn visit_variable_declarator(
 ) {
     let source = ctx.source;
 
-    let var_name = node.child_by_field_name("name")
+    let var_name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -462,13 +514,20 @@ fn visit_variable_declarator(
 
                 let qualified_name = class_name.map(|cn| format!("{}.{}", cn, var_name));
 
-                let args = val.child_by_field_name("parameters")
+                let args = val
+                    .child_by_field_name("parameters")
                     .map(|n| node_text(n, source).to_string())
-                    .or_else(|| val.child_by_field_name("parameter")
-                        .map(|n| node_text(n, source).to_string()));
+                    .or_else(|| {
+                        val.child_by_field_name("parameter")
+                            .map(|n| node_text(n, source).to_string())
+                    });
 
-                let return_type = val.child_by_field_name("return_type")
-                    .map(|n| node_text(n, source).trim_start_matches(':').trim().to_string());
+                let return_type = val.child_by_field_name("return_type").map(|n| {
+                    node_text(n, source)
+                        .trim_start_matches(':')
+                        .trim()
+                        .to_string()
+                });
 
                 let is_async = is_async_node(val, source);
                 let docstring = None;
@@ -492,12 +551,22 @@ fn visit_variable_declarator(
                 if let Some(body_node) = val.child_by_field_name("body") {
                     let mut cursor = body_node.walk();
                     for child in body_node.children(&mut cursor) {
-                        visit_node(child, ctx, class_name, Some(&var_name.clone()), body_node.kind(), depth + 1);
+                        visit_node(
+                            child,
+                            ctx,
+                            class_name,
+                            Some(&var_name.clone()),
+                            body_node.kind(),
+                            depth + 1,
+                        );
                     }
                 }
             }
             _ => {
-                if parent_kind == "program" || parent_kind == "module" || parent_kind == "export_statement" {
+                if parent_kind == "program"
+                    || parent_kind == "module"
+                    || parent_kind == "export_statement"
+                {
                     let value_text = node_text(val, source);
                     let value = if value_text.chars().count() > 200 {
                         value_text.chars().take(200).collect()
@@ -521,11 +590,10 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let source = ctx.source;
     let line = node.start_position().row + 1;
 
-    let module = node.child_by_field_name("source")
-        .map(|n| {
-            let text = node_text(n, source);
-            text.trim_matches(|c| c == '"' || c == '\'').to_string()
-        });
+    let module = node.child_by_field_name("source").map(|n| {
+        let text = node_text(n, source);
+        text.trim_matches(|c| c == '"' || c == '\'').to_string()
+    });
 
     let mut cursor = node.walk();
     let mut found_names = false;
@@ -560,9 +628,11 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
                         let mut ni_cursor = clause_child.walk();
                         for import_spec in clause_child.children(&mut ni_cursor) {
                             if import_spec.kind() == "import_specifier" {
-                                let spec_name = import_spec.child_by_field_name("name")
+                                let spec_name = import_spec
+                                    .child_by_field_name("name")
                                     .map(|n| node_text(n, source).to_string());
-                                let spec_alias = import_spec.child_by_field_name("alias")
+                                let spec_alias = import_spec
+                                    .child_by_field_name("alias")
                                     .map(|n| node_text(n, source).to_string());
                                 ctx.imports.push(ParsedImport {
                                     module: module.clone(),
@@ -603,7 +673,11 @@ fn visit_call(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Opt
     };
 
     let caller = current_func.unwrap_or("<module>").to_string();
-    ctx.calls.push(ParsedCall { caller, callee, line });
+    ctx.calls.push(ParsedCall {
+        caller,
+        callee,
+        line,
+    });
 }
 
 /// Главная функция парсинга TypeScript/TSX
@@ -669,7 +743,11 @@ mod tests {
         assert_eq!(result.classes.len(), 1);
         assert_eq!(result.classes[0].name, "User");
         // Интерфейс должен иметь пометку
-        assert!(result.classes[0].bases.as_deref().unwrap_or("").contains("interface"));
+        assert!(result.classes[0]
+            .bases
+            .as_deref()
+            .unwrap_or("")
+            .contains("interface"));
     }
 
     #[test]
@@ -703,7 +781,8 @@ mod tests {
     #[test]
     fn test_parse_tsx_file() {
         let parser = TypeScriptParser::new();
-        let source = "import React from 'react';\nfunction App() {\n  return <div>Hello</div>;\n}\n";
+        let source =
+            "import React from 'react';\nfunction App() {\n  return <div>Hello</div>;\n}\n";
         let result = parser.parse(source, "test.tsx").unwrap();
         assert!(result.functions.len() >= 1);
         assert!(result.functions.iter().any(|f| f.name == "App"));

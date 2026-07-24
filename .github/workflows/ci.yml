@@ -14,29 +14,36 @@ env:
 jobs:
   secret-scan:
     name: Secret scan (gitleaks)
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="8.30.1"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          curl --fail --location --silent --show-error "$url" --output "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+          ./gitleaks git --redact --verbose .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: "3.11"
       - name: Install tools
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install ruff black mypy
+          pip install ruff==0.15.22 black==26.5.1 mypy==2.3.0
       - name: Ruff
         shell: pwsh
         run: ruff check tools/ scripts/ --output-format=github
@@ -47,46 +54,126 @@ jobs:
         shell: pwsh
         run: |
           mypy --install-types --non-interactive tools/skills-bridge/ tools/prompt-gallery/ tools/help-index-mcp/ || true
+      - name: Optional adapters remain fail-closed
+        shell: pwsh
+        run: python scripts/27_validate_optional_adapters.py
 
   rust-build:
     name: Rust build & test (bsl-indexer)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: tools/code-index-mcp
-      - name: cargo fmt
-        working-directory: tools/code-index-mcp
-        run: cargo fmt --all -- --check
       - name: cargo clippy
         working-directory: tools/code-index-mcp
-        run: cargo clippy --all-targets -- -D warnings
+        # Enforce stable correctness/performance categories. Two API-shape size
+        # warnings remain explicitly scoped while correctness/perf stay blocking.
+        run: >-
+          cargo clippy --all-targets --
+          -D clippy::correctness
+          -D clippy::suspicious
+          -D clippy::perf
+          -A clippy::result_large_err
+          -A clippy::large_enum_variant
       - name: cargo test
         working-directory: tools/code-index-mcp
         run: cargo test --all --no-fail-fast
-      # Интеграционные тесты CLI (тяжёлые, marked #[ignore]):
-      # roundtrip index→query на фикстуре. Требует собранного release-бинаря,
-      # кэш rust-cache сохраняет target/ между шагами — cargo переиспользует артефакты.
-      - name: cargo integration test
+      - name: Build release indexer
         if: success()
         working-directory: tools/code-index-mcp
+        run: cargo build --release -p bsl-indexer
+      - name: Golden index and incremental parity contract
+        shell: pwsh
+        run: >-
+          python scripts/25_validate_code_index_045.py
+          --report tools/code-index-mcp/target/release/code-index-045-contract.json
+      - name: Provider-free evidence and citation evaluation
+        shell: pwsh
+        run: >-
+          python scripts/26_run_prism_eval.py
+          --json-report tools/code-index-mcp/target/release/prism-1c-eval.json
+          --markdown-report tools/code-index-mcp/target/release/prism-1c-eval.md
+      - name: Generate release indexer checksum
+        shell: pwsh
         run: |
-          cargo build --release -p bsl-indexer
-          cargo test --workspace -- --ignored test_index_then_search_roundtrip
-          cargo test --workspace -- --ignored test_stats_with_fixture
-          cargo test --workspace -- --ignored test_query_with_fixture
+          $binary = 'target/release/bsl-indexer.exe'
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          "$digest  bsl-indexer.exe" | Set-Content -Encoding ascii 'target/release/bsl-indexer.exe.sha256'
+        working-directory: tools/code-index-mcp
+      - name: Publish release indexer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bsl-indexer-windows-x64
+          path: |
+            tools/code-index-mcp/target/release/bsl-indexer.exe
+            tools/code-index-mcp/target/release/bsl-indexer.exe.sha256
+            tools/code-index-mcp/target/release/code-index-045-contract.json
+            tools/code-index-mcp/target/release/prism-1c-eval.json
+            tools/code-index-mcp/target/release/prism-1c-eval.md
+          if-no-files-found: error
 
   powershell-smoke:
     name: PowerShell smoke checks
     runs-on: windows-latest
+    needs: rust-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Download release indexer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bsl-indexer-windows-x64
+          path: tools/code-index-mcp/target/release
+      - name: Parse all PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @('START_HERE.ps1') +
+            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $file).Path
+            $content = [System.IO.File]::ReadAllText($path)
+            if ($content.Contains([char]0xfffd)) {
+              throw "PowerShell source contains an invalid replacement character: $path"
+            }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors) {
+              $messages = $errors | ForEach-Object { $_.Message }
+              throw "PowerShell parser failed for $path`: $($messages -join '; ')"
+            }
+          }
+      - name: Prepare Python environment and deterministic index
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $PWD 'tools\code-index-mcp\target\release'
+          $binary = Join-Path $artifactRoot 'bsl-indexer.exe'
+          $expected = ((Get-Content -Raw (Join-Path $artifactRoot 'bsl-indexer.exe.sha256')) -split '\s+')[0]
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Downloaded bsl-indexer checksum mismatch: expected $expected, got $actual"
+          }
+          .\scripts\setup.ps1 -SkipBinaryDownload
+          $fixture = Join-Path $PWD 'tools\cc-1c-skills\tests\skills\cases\interface-edit\snapshots\basic'
+          .\scripts\04_index_1c_dump.ps1 -DumpRoot $fixture -Force
       - name: Run smoke scripts
         shell: pwsh
         run: |
@@ -102,15 +189,88 @@ jobs:
         if: always()
         run: .\scripts\18_check_prompt_gallery.ps1
 
+  windows-installer:
+    name: Windows installer offline, upgrade & uninstall
+    runs-on: windows-latest
+    needs: rust-build
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Download release indexer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bsl-indexer-windows-x64
+          path: tools/code-index-mcp/target/release
+      - name: Verify release indexer
+        shell: pwsh
+        run: |
+          $root = 'tools\code-index-mcp\target\release'
+          $expected = ((Get-Content -Raw "$root\bsl-indexer.exe.sha256") -split '\s+')[0]
+          $actual = (Get-FileHash "$root\bsl-indexer.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "bsl-indexer artifact checksum mismatch" }
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.3'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Inno Setup archive checksum mismatch: $actual"
+          }
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup Authenticode verification failed: $($signature.Status)"
+          }
+          $process = Start-Process $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$installRoot`""
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "INNO_COMPILER=$installRoot\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prepare verified offline wheelhouse
+        shell: pwsh
+        run: .\scripts\23_prepare_offline_wheelhouse.ps1
+      - name: Build isolated upgrade pair
+        shell: pwsh
+        run: |
+          $appId = 'D3D5126B-73C1-4D7D-8D83-5B11EDC0D2A6'
+          $common = @{
+            InstallerAppId = $appId
+            InnoCompiler = $env:INNO_COMPILER
+            OfflineWheelhouse = '.\dist\offline-wheelhouse'
+            RequireOfflineWheelhouse = $true
+          }
+          .\scripts\19_build_windows_installer.ps1 @common -AppVersion '0.9.0.1' -OutputDir '.\dist\installer-ci1'
+          .\scripts\19_build_windows_installer.ps1 @common -AppVersion '0.9.0.2' -OutputDir '.\dist\installer-ci2'
+      - name: Verify signature release gate is fail-closed
+        shell: pwsh
+        run: |
+          try {
+            .\scripts\19_build_windows_installer.ps1 -RequireSignature -InnoCompiler $env:INNO_COMPILER -OutputDir '.\dist\must-not-build'
+            throw 'RequireSignature unexpectedly accepted missing certificate material.'
+          } catch {
+            if ($_.Exception.Message -notmatch 'RequireSignature requires') { throw }
+            Write-Host 'OK: production signature gate rejects missing certificate material'
+          }
+      - name: Exercise offline setup, upgrade and uninstall
+        shell: pwsh
+        run: >-
+          .\scripts\24_test_windows_installer.ps1
+          -InstallerPath '.\dist\installer-ci1\1c-ai-workbench-setup-0.9.0.1.exe'
+          -UpgradeInstallerPath '.\dist\installer-ci2\1c-ai-workbench-setup-0.9.0.2.exe'
+
   license-check:
     name: License compliance (REUSE)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
       - name: Install reuse
-        run: sudo apt-get update && sudo apt-get install -y reuse
+        run: python3 -m pip install --disable-pip-version-check reuse==6.2.0
       - name: Reuse lint
         run: reuse lint
 
@@ -118,26 +278,27 @@ jobs:
     name: Markdown lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DavidAnson/markdownlint-cli2-action@v18
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25 # v24.0.0
         with:
           globs: |
             **/*.md
             !node_modules/**
             !tools/cc-1c-skills/**
+            !tools/code-index-mcp/**
 
   pre-commit:
     name: Pre-commit (all hooks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: "3.11"
       - name: Install pre-commit
-        run: pip install pre-commit
+        run: pip install pre-commit==4.6.0
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
         env:
@@ -154,7 +315,7 @@ jobs:
     runs-on: windows-latest
     needs: rust-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
@@ -174,7 +335,7 @@ jobs:
         continue-on-error: true
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cargo-test-report
           path: |

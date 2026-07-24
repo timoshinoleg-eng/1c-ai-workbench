@@ -5,6 +5,152 @@ Russian version: [CHANGELOG.md](CHANGELOG.md).
 Format — [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning — [SemVer](https://semver.org/).
 
+## [0.45.0] — 2026-07-10
+
+**The BSL parser is switched from `tree-sitter-onescript` to the dedicated `tree-sitter-bsl` grammar (0.1.7) with a `bsl-parse` normalization layer. The OneScript grammar was an approximation of the 1C built-in language; `tree-sitter-bsl` parses BSL more accurately, and `bsl-parse` works around known grammar defects (source normalization before parsing). The key effect — platform-type constructors (`Новый Массив`, `Новый ТаблицаЗначений`, `Новый Структура`) no longer enter the call graph as procedure calls. A full reindex is required.**
+
+### Changed
+
+- **BSL grammar: `tree-sitter-onescript` → `tree-sitter-bsl` 0.1.7.** The `tree-sitter-onescript` dependency is removed from the workspace, `code-index-core` and `bsl-extension`. `.bsl` and `.os` files are parsed by the `tree-sitter-bsl` grammar.
+- **Unified BSL parsing layer `bsl-parse` (crate `crates/bsl-parse`).** Source normalization for `tree-sitter-bsl` grammar defects (`normalize_for_parser`) before feeding the parser. The crate is vendored into the repository (a copy of the shared layer used by the bsl-context project) — code-index builds self-contained, without external path dependencies.
+- **Call graph: false edges from constructors removed.** `Новый Массив`/`ТаблицаЗначений`/`Структура`/`Соответствие` and other platform-type constructors are no longer resolved as calls to same-named procedures. On a real UT 11.5: `Массив` 3525 → 0 edges, `total_calls` 2,139,478 → 2,021,203 (−118k false). Symmetric on ZUP, BP Smak-sultana, BP TDK.
+
+### Testing
+
+- `cargo test --workspace --features enrichment` — 581 passed, 0 failed, 0 warnings.
+- Local live-smoke on a WMS dump (59 modules): indexing, call graph (`get-callees` resolves qualified calls), FTS, `grep-body` — green.
+- Federated rollout on the VM (musl ELF): reindex of all four production bases — `ut` (58k files), `zup` (40k), `bp-ss` (94k), `bp-tdk` (90k), `exit=0` each. Effect confirmed on all: `Массив` = 0, only genuine `ТаблицаЗначений` calls remain (4–5 edges).
+
+### Compatibility
+
+- **A full reindex is required** (`index --force`): the call graph is rebuilt by the new parser. The DB schema is unchanged.
+
+## [0.44.4] — 2026-07-08
+
+**The incremental rebuild of an object when a borrower leaves is now fully symmetric with a full reindex: `data_links`, `attributes_json` and `metadata_modules` are restored by merging across ALL remaining copies (base + extensions), not from the single arriving file. On a real UT 11.5 the incremental result after a borrower leaves matched the full rebuild across all 9 extras tables (there was a mismatch in `data_links` and in form-module `config_version`).**
+
+**Separately, the quadratic degradation of the incremental call-graph rebuild on a bulk batch is eliminated: resolution of callee addresses (`callee_proc_key`) is moved out of the per-file loop into a single once-per-batch pass (a shared helper with the full rebuild). On a real UT 11.5 (git roll-forward of 2921 files, Update_20260623 -> Update_20260707) a batch of 3193 file events: 585 s -> 25.6 s (~23x faster); the previous >12 min hang is gone.**
+
+> **Scope of the fix — objects INSIDE extensions (a specific object stops being borrowed: its copy is removed, the dump info is updated). Removing an extension AS A WHOLE is NOT handled incrementally** (no reliable signal: the extension dump info is deleted, not modified, and the watcher delete event is unreliable) — that case is covered normally by a full reindex on daemon restart.
+
+> When a borrower leaves, `remerge_object` rebuilt the object from base+remaining copies for `metadata_objects.attributes_json`, but `data_links` was parsed from the single arriving file (phantom extension edges or lost base edges), and `metadata_modules` was not touched at all → the `config_version` of the borrower's form modules went stale (the orphan module was not rebuilt). A full reindex produced a different result.
+
+### Fixed
+
+- **`data_links` on a borrower leaving — merge across copies.** `update_data_links_for_object` (in `remerge_object`) deletes all edges of the object and rebuilds them from every existing copy across all sub-configs (symmetric to the bulk `index_data_links`); the departed copy is filtered out on its own (no file). Closes: A — copy delete delivered by the watcher (the per-file parse wiped ALL edges, including base ones); A2 — delete lost, only a dump-info MODIFY (phantom extension edges remained); B — an extension copy changed (the base edge was lost).
+- **`metadata_modules` on a borrower leaving — rebuild the object's modules.** New `update_metadata_modules_for_object` (in `remerge_object`): DELETE all modules of the object (by `object_name`, all `extension_name`) + walk the object's `.bsl` modules across ALL roots and re-insert against the fresh dump info. Without it the `config_version` of the borrower's form modules stayed stale (the per-file path does not touch them — the `.bsl` did not physically change). The common logic is extracted into `build_module_row`/`insert_module_row`, reused by the per-file `update_metadata_module_for_file`.
+- **`sub_config_roots` and the dump-info cache (`cfgver_cache`) are computed once per batch** — `parse_config_dump_info` is not re-read for each object/module.
+- **Quadratic degradation of the incremental call-graph on a bulk batch — `callee_proc_key` resolution moved to once-per-batch.** `update_call_graph_direct_for_file` no longer resolves target addresses per file: every `.bsl` re-scanned the entire `proc_call_graph` via `substr(caller_proc_key…)` (no index) and rebuilt the temp map of common-module exports with a full `files x functions` scan (~57K x 260K per file). Now the per-file step only maintains the file's raw edges (index-backed, `callee_proc_key = NULL`), while global resolution and pruning are extracted into a shared helper `resolve_and_prune_direct_edges` (the same one the full `build_call_graph` calls), run ONCE after the batch loop in `run_incremental_extras`. Incremental==full identity for `proc_call_graph` is preserved (shared code + parity tests).
+- **`procedure_enrichment` — full scan replaced by an index seek.** In `update_procedure_terms_for_file` the predicate `proc_key LIKE ?||'::%'` (SCAN of ~257K rows, LIKE did not use the index) is replaced by a range `proc_key >= '<rel>::' AND proc_key < '<rel>:;'` (SEARCH via `idx_pe_proc_key`, confirmed by `EXPLAIN QUERY PLAN`).
+
+### Testing
+
+- Incremental==full symmetry unit tests: `incremental_borrower_drop_keeps_data_links` (A), `..._opis_only_...` (A2), `incremental_ext_copy_change_keeps_base_data_links` (B), `incremental_massive_object_change_matches_full` (C, N=60), and the new `incremental_borrower_drop_rebuilds_metadata_modules`. For the call-graph resolver — a new multi-file parity test `incremental_call_graph_multifile_batch_matches_full` (a batch of 2 common modules cross-referencing exports, incremental==full) plus the existing `incremental_call_graph_direct_matches_full` / `incremental_direct_shared_edge_survives`. The whole workspace is green (538 tests: 192 core + 23 indexer + 323 bsl-extension, 0 failed, 0 warnings).
+- **Federated "evil" measurement on a real UT 11.5** (57k files, 43 sub-configs): a borrower `Document.ЗаказКлиента` leaving the `ent_УправлениеДоставками` extension → the incremental result **matched the full reindex across all 9 extras tables** (`data_links`, `metadata_objects`, `config_manifest`, `metadata_modules`, `metadata_forms`, `role_rights`, `event_subscriptions`, `metadata_code_usages`, `proc_call_graph`). Before the fix `metadata_modules` diverged on form-module `config_version`.
+- **Mass load measurement:** dropping the `МодульУОП` extension's borrowing entirely (1046 file events, 1036 objects rebuilt) — the incremental run took **5.4 s versus ~60 s for a full index** (×11 faster, no degradation from the rebuild).
+- **Mass git-based resolver measurement on a real UT 11.5** (clone of the production gitlab, roll-forward Update_20260623 -> Update_20260707, a 2921-file diff): an incremental batch of 3193 file events (1746 changed + 1447 deleted) processed in **25.6 s** versus **585 s** on the previous per-file resolver (and the previous >12 min hang on a repeat run). A full index of the clone for comparison — 163 s (core 71 + extras 92). The second batch (426 files, 39.7 s) is the cost of the config-level rebuild (`data_links` config, `role_rights`, base reconcile), not the call graph.
+
+### Compatibility
+
+- The data format and DB schema are unchanged — no reindex required. The change touches only the incremental reconcile-area path when a borrower leaves; the initial index, the bulk update, and the per-file path are untouched.
+
+## [0.44.3] — 2026-07-05
+
+**Fixed the quadratic degradation of a bulk update of an existing DB: the old rows of changed files are deleted in a single batch pass while the indexes are still alive, instead of a per-file DELETE with no indexes. At UT scale (2M calls) the delete phase for a 500-file update went 260,385 ms → 234 ms (×1113); a reindex after a mass git pull: hours → minutes.**
+
+> On a bulk update of a non-empty DB (number of changed files > `bulk_threshold`), `prepare_bulk_load()` dropped the secondary `idx_*_file` indexes BEFORE the write loop, and the loop ran 5 `DELETE … WHERE file_id = ?` per file with the indexes already gone → a full table scan per file. On UT (`calls` ~2M rows × thousands of changed files) this meant tens of billions of row scans on a single core — hours instead of minutes. The initial index (empty DB) and the incremental path (< threshold, indexes alive) were not affected and were not changed.
+
+### Fixed
+
+- **Batch deletion of old rows in a single pass while the `idx_*_file` indexes are alive.** The bulk-update branch of a non-empty DB now: (1) drops the functions/classes FTS triggers so the batch DELETE does not fire them row by row; (2) deletes the old rows of the changed files (only those already present in the DB) with `DELETE … WHERE file_id IN (…)` in chunks across the 5 "code" tables (`functions`, `classes`, `imports`, `calls`, `variables`) in a single transaction — while the secondary indexes are still in place; (3) only then drops the B-tree indexes. In the write loop `skip_delete = bulk_mode || is_fresh_db` — per-row DELETEs are no longer run, the old rows are already gone. `finish_bulk_load()` (recreating indexes, triggers, FTS rebuild) is unchanged.
+- **Text/FTS is deliberately not touched in the batch.** `text_contents` has `file_id` as its primary key (deletion is cheap), and the contentless `fts_text_files` pointer is rebuilt idempotently in `insert_text_file` when the file is rewritten — a separate batch pass is unnecessary and would be incorrect (it needs the old text).
+- `drop_indexes_and_triggers()` was split into `drop_indexes()` + `drop_fts_triggers()`; the former function is kept as their composition.
+
+### Testing
+
+- New unit test `test_bulk_update_existing_db`: after a bulk update the `functions`/`classes`/`imports`/`calls`/`variables`/`text` counts strictly equal a fresh index of the same final snapshot (no duplicates), and FTS finds the new symbols and no longer finds the old ones. Whole `code-index-core` green (322 tests, 0 failed), workspace green.
+- Live smoke ON DISK on a real UT 11.5 configuration (a copy, 57k files, 4.3 GB DB, `calls` 2,075,353). A/B of the old binary (0.44.2) vs the new one on a bulk update of 500 changed files: the "DB write" phase **260,385 ms → 234 ms (×1113)**; all 7 count tables identical (the old one is correct but slow). Extrapolated to a git pull of ~15k files: the delete phase goes from hours to seconds.
+
+### Compatibility
+
+- The data format and DB schema are unchanged — no reindex is required, existing indexes are fully compatible. The change touches only the bulk-update path of a non-empty DB; the initial index and the incremental path are untouched.
+
+## [0.44.2] — 2026-07-04
+
+**The required `repo` parameter is now described consistently in the JSON schema of ALL tools with an explicit "REQUIRED" marker, and for `read_file`/`stat_file` the requirement is also spelled out in the tool description. Weak models kept omitting this parameter and the call failed (GitHub issue #3).**
+
+> For `read_file`/`stat_file`, `list_files`, `grep_text`, `grep_code` the `repo` field had no description at all — in `tools/list` the model saw neither the parameter's purpose nor that it was required. Other tools had a description but did not emphasize that it is required. Weak local models (e.g. qwen3-4b via LM Studio) called `read_file` with only `path` and got an opaque error. This change only touches the schema descriptions; behavior and data are unchanged.
+
+### Fixed
+
+- **Consistent `repo` field description across all parameter structs.** Every `repo: String` now carries the doc-comment "REQUIRED. Repository alias (from --path alias=dir…). The call fails without it. List — get_stats." — previously some tools (`read_file`, `stat_file`, `list_files`, `grep_text`, `grep_code`) had no description, and the rest did not stress that it is required. The optional `repo` of `get_stats` (`Option<String>`) is left untouched. `repo` was already required at the type level; this change makes it visible to the model in `tools/list`.
+- **`read_file` / `stat_file`: the requirement of both parameters is spelled out in the tool description.** The `#[tool(description=…)]` now states that `repo` and `path` are required; the `path` field also got a short description.
+
+### Testing
+
+- Whole `code-index-core` green (321 tests, 0 failed).
+- Live smoke of the built `code-index serve` (HTTP, MCP handshake → `tools/list`): for `read_file`, `stat_file`, `list_files`, `grep_code`, `grep_text`, `search_function`, `get_function`, `find_symbol`, `inputSchema.properties.repo.description` is non-empty and contains "REQUIRED", and `repo` is present in `required`; for `get_stats`, `repo` stays optional (`required` empty).
+
+## [0.44.1] — 2026-07-03
+
+**Speeding up the extras phase of a full index: procedure-term raw data collected during the parallel parse, batched full-text rebuild, one-shot materialization of the call graph. A reindex is required to benefit; the index is byte-identical to before.**
+
+> Profiling a full index of BP_TDK (88279 files) showed that the extras phase is dominated not by search but by write phases: per-row index/trigger maintenance and re-reading what the core already parsed. Three changes remove the redundant work without changing the data (verified with sha256 of the graph and the terms against the previous DB). They touch only the FULL-reindex path; the incremental path and the public `code-index` are untouched.
+
+### Changed
+
+- **`procedure_terms`: raw data collected during the parallel core parse (54 s → 17 s on BP_TDK).** Previously the term layer re-read every `.bsl` from disk and filled `procedure_enrichment` row by row, while that table has an FTS5 index with a trigram tokenizer on the `terms` column — tokenizing ~530k rows through per-row triggers was the dominant cost. Now the name/comment/object are collected straight from the hot `parse_results` during the parallel parse (like `code_usages`), the synonym is joined in after the XML synonym layer, and the full text is built with a single `INSERT … VALUES('rebuild')` with the FTS triggers dropped for the bulk insert and guaranteed to be restored afterwards. The terms of BP_TDK's ~530k procedures are byte-identical (sha256 matched).
+- **Call graph: `calls⋈files` materialized once (93 s → 52 s on BP_TDK).** Building `proc_call_graph` (direct edges) and `direct_edge_files` ran the expensive `JOIN … DISTINCT` over `calls⋈files` twice — once per table — and paired with a per-row insert into an indexed table it degraded worse than the sum of its parts. Now the edge set `(path, caller, callee)` is collected into a temp table once with `DISTINCT`, and both tables are filled from it with plain inserts, no repeated JOIN/DISTINCT. The graph is byte-identical (sha256 of all edges matched).
+
+### Testing
+
+- Full `index --force` on BP_TDK: `procedure_enrichment`(mech) = 529756, `metadata_code_usages` = 260166, `proc_call_graph` = 1236771 (direct 1165856), `direct_edge_files` = 2424236 — all match the previous DB; sha256 of the graph and sha256 of the terms are identical. FTS is in sync (fts = content = 529756), trigram search works, FTS triggers and graph indexes are intact after the reindex.
+- Whole workspace green (514 tests, 0 failed), including `procedure_enrichment_inserts_propagate_to_fts`, `procedure_enrichment_update_resyncs_fts`, `incremental_terms_update_and_cleanup`, `proc_call_graph_unique_constraint_works`.
+- Confirmed by diff: the incremental functions (`update_procedure_terms_for_file`, `update_code_usages_for_file`, `update_call_graph_direct_for_file`) are unchanged — the edits are only in the full-reindex path.
+
+### Compatibility
+
+- **A full reindex is required** to get the speedup (the changes are in the full-reindex path). The data format is unchanged: an old index keeps working, and the speedup appears on the next full reindex (`index --force` or recreating `.code-index`).
+
+## [0.44.0] — 2026-07-02
+
+**`did_you_mean` suggestions with similar names on empty `get_function`/`get_class` + cosmetic hint refinements (dynamic calls in the call graph).**
+
+> A follow-up to **Yuri Gridunov**'s call statistics (see 0.43.0): after fixing the case-related misses, two frictions remained — repeated blind calls with name variations, and the false conclusion "0 callers = dead code" on dynamic dispatchers. Both changes live in the serve output layer; no reindex required.
+
+### Added
+
+- **`did_you_mean` in `get_function`/`get_class`.** When both the exact and the case-insensitive lookup return 0, the response includes up to 5 similar names. Candidates come from two complementary sources: prefix-LIKE on the name probing from a long prefix to a short one (12 → 9 → 6 characters — on "hot" 1C name starts like `Провер%`/`Заполн%` a short prefix with a LIMIT collects random names and loses the target) and FTS (token-part matches — names with `_`). Ranking — case-insensitive Levenshtein distance with a sanity threshold (a third of the query length, minimum 3): an empty `did_you_mean` beats five unrelated names sharing a prefix. A "continuation" name (`ЗаполнитьЖурналОпераций` → `…ОперацийМаксимо`) is not penalized for its long tail. Same pattern `get_object_structure` and `bsl_sql` already had.
+
+### Cosmetic changes
+
+- **Clarified the `get_callers`/`get_callees` hint on 0 edges.** Added an explicit warning: "0 callers ≠ dead code" — the function may be invoked dynamically (`Выполнить`/`Вычислить` building the name from strings, a typical dispatcher pattern), with a recommendation to check `grep_code` by a name fragment (it also sees string literals). This closes the frequent model error "no edges → dead code" with text alone, no indexer changes: a measurement across 6 production repos showed ~42 real name dispatchers over 5 configurations — a dedicated dynamic-call candidate table would not pay off.
+
+### Testing
+
+- Unit tests: suggestions on a typo in the word tail, lowercase+typo, no garbage suggestions for a non-existent name, a mirror test for classes. Whole workspace green (code-index-core 321, bsl-extension 168, integration 23, 0 failed).
+- Live smoke locally and via federation: `ОбработатьЗапрсо` → `ОбработатьЗапрос` (wms, single suggestion — noise cut by the threshold), `ПроверитьУсловияТригера` → `ПроверитьУсловияТриггера` first (ut, "hot" prefix), the new call-graph hint from both nodes, ci-fallback regression (`уоп_подключаемыекоманды_выполнить` → 31 locations).
+
+## [0.43.0] — 2026-07-01
+
+**1C code navigation resilient to case and to parameter confusion: case-insensitive symbol lookup, `name` accepted in the call graph, clarified grep tool descriptions.**
+
+> Context. Thanks to **Yuri Gridunov** for detailed statistics of code-index calls from a real bulk 1C-integration documentation session (Composer + Sonnet, ~260 tool calls) — it precisely surfaced the recurring Cyrillic friction points and pointed at what to fix. All three changes are backward-compatible; no reindex required (serve output layer only).
+
+### Added
+
+- **Case-insensitive symbol lookup in `get_function`/`get_class`.** Exact name matching in SQLite is byte-wise and does not fold Cyrillic case: `заполнитьжурнал` failed to find `ЗаполнитьЖурнал` even though the function exists. Now, when the exact match is empty, a fallback via FTS kicks in (the `unicode61` tokenizer folds Cyrillic case) with a strict case-insensitive name check in Rust — the fast exact path is untouched, and the more expensive fallback runs only when the query would otherwise return 0. It catches a common model error ("lowercase name from memory") and works correctly on names with underscores (`уоп_подключаемыекоманды_выполнить`).
+
+### Changed
+
+- **`get_callers`/`get_callees` accept `name` (and `symbol`) as an alias for `function_name`.** Models regularly confused the parameter key with `get_function`, and a blind call failed with the opaque parser error "missing field function_name" — a wasted turn. Added a serde alias (as `find_symbol` already had). The canonical `function_name` works as before.
+- **Clarified `grep_code` and `grep_body` descriptions.** The `grep_code` description wrongly framed it as a complement to `grep_body` ("everything grep_body misses"), whereas it actually searches the FULL file text (module-level + bodies) — a superset. The descriptions now explicitly distinguish: `grep_code` — all occurrences of a string/name anywhere in the file (routing tables, `Перем` declarations, literals + bodies); `grep_body` — bodies only, but tells you which procedure the match is in. This removes the frequent miss "used grep_body for a service name and missed its module-level usage".
+
+### Testing
+
+- Unit tests: ci-fallback (Cyrillic + underscores + no false positives), class fallback, alias deserialization. Whole workspace green (code-index-core 319, bsl-extension 168, 0 failed).
+- Live smoke on real data: local serve (lowercase `get_function` → function body) and the federated node via federation (lowercase `уоп_подключаемыекоманды_выполнить` on `ut` → 31 locations).
+
 ## [0.42.2] — 2026-06-30
 
 **1C:EDT export format support: parsing of `.mdo` metadata and parser protection against binary modules.**

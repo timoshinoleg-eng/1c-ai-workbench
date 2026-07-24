@@ -31,12 +31,8 @@ const CODE_EXTENSIONS: &[(&str, &str)] = &[
 /// Внимание: `html`/`htm` ушли в CODE_EXTENSIONS (v0.7.1) — для них применяется
 /// AST-парсинг + дополнительная text-индексация (см. `is_dual_indexed_language`).
 const TEXT_EXTENSIONS: &[&str] = &[
-    "md", "txt", "rst",
-    "json", "yaml", "yml", "toml",
-    "xml", "css",
-    "c", "h", "cpp", "hpp", "cs", "rb", "php", "swift", "kt",
-    "csv", "env", "ini", "cfg",
-    "sql", "sh", "bat", "ps1",
+    "md", "txt", "rst", "json", "yaml", "yml", "toml", "xml", "css", "c", "h", "cpp", "hpp", "cs",
+    "rb", "php", "swift", "kt", "csv", "env", "ini", "cfg", "sql", "sh", "bat", "ps1",
 ];
 
 /// Языки, для которых при индексации делается «двойная вставка»: и
@@ -53,13 +49,34 @@ pub fn is_dual_indexed_language(language: &str) -> bool {
 
 /// Директории, которые следует исключать при обходе
 pub const EXCLUDE_DIRS: &[&str] = &[
-    "node_modules", ".venv", "__pycache__", ".git",
-    ".code-index", "target", ".mypy_cache", ".pytest_cache",
-    ".tox", "dist", "build", "venv", "env", ".env",
+    "node_modules",
+    ".venv",
+    "__pycache__",
+    ".git",
+    ".code-index",
+    "target",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    "dist",
+    "build",
+    "venv",
+    "env",
+    ".env",
 ];
 
 /// Определить категорию файла по расширению пути
 pub fn categorize_file(path: &Path) -> FileCategory {
+    // `ConfigDumpInfo.xml` — служебная опись выгрузки 1С (uuid + configVersion
+    // всех объектов и под-элементов). В общий текстовый индекс не кладём:
+    // поиск по хэшам версий бессмысленен, а базовая опись весит десятки МБ.
+    // Единственный потребитель — заполнение таблицы `config_manifest`
+    // (bsl-extension), которое читает файл напрямую с диска, а не из индекса.
+    // Binary = «пропустить, не индексировать».
+    if path.file_name().and_then(|n| n.to_str()) == Some("ConfigDumpInfo.xml") {
+        return FileCategory::Binary;
+    }
+
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -102,7 +119,10 @@ mod tests {
     #[test]
     fn test_text_extensions() {
         assert_eq!(categorize_file(Path::new("readme.md")), FileCategory::Text);
-        assert_eq!(categorize_file(Path::new("config.toml")), FileCategory::Text);
+        assert_eq!(
+            categorize_file(Path::new("config.toml")),
+            FileCategory::Text
+        );
         assert_eq!(categorize_file(Path::new("data.json")), FileCategory::Text);
         assert_eq!(categorize_file(Path::new("setup.cfg")), FileCategory::Text);
     }
@@ -125,14 +145,39 @@ mod tests {
 
     #[test]
     fn test_binary_extension() {
-        assert_eq!(categorize_file(Path::new("image.png")), FileCategory::Binary);
-        assert_eq!(categorize_file(Path::new("archive.zip")), FileCategory::Binary);
+        assert_eq!(
+            categorize_file(Path::new("image.png")),
+            FileCategory::Binary
+        );
+        assert_eq!(
+            categorize_file(Path::new("archive.zip")),
+            FileCategory::Binary
+        );
         assert_eq!(categorize_file(Path::new("lib.so")), FileCategory::Binary);
     }
 
     #[test]
     fn test_no_extension() {
         assert_eq!(categorize_file(Path::new("Makefile")), FileCategory::Binary);
+    }
+
+    #[test]
+    fn config_dump_info_skipped_by_name() {
+        // Вариант 2: опись выгрузки 1С не индексируется как текст —
+        // единственный потребитель файла — заполнение config_manifest.
+        assert_eq!(
+            categorize_file(Path::new("extensions/ent_Наборы/ConfigDumpInfo.xml")),
+            FileCategory::Binary
+        );
+        assert_eq!(
+            categorize_file(Path::new("base/ConfigDumpInfo.xml")),
+            FileCategory::Binary
+        );
+        // Обычный объектный XML остаётся текстовым (xml_1c-апгрейд — позже в indexer).
+        assert_eq!(
+            categorize_file(Path::new("base/Catalogs/Контрагенты.xml")),
+            FileCategory::Text
+        );
     }
 
     #[test]

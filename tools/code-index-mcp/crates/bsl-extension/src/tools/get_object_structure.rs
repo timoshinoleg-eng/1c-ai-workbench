@@ -88,10 +88,12 @@ impl IndexTool for GetObjectStructureTool {
     ) -> Pin<Box<dyn Future<Output = Value> + Send + 'a>> {
         Box::pin(async move {
             // Узкая выборка секций (sections): без параметра — все секции.
-            let sections: Option<Vec<String>> = args
-                .get("sections")
-                .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect());
+            let sections: Option<Vec<String>> =
+                args.get("sections").and_then(|v| v.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                });
             // Критерий-селектор (name_like) приоритетен: сервер сам разворачивает
             // плоский предикат в список объектов и отдаёт их структуры за 1 ход
             // (общая конвенция объектно-ключевых инструментов). Массовый режим
@@ -167,8 +169,7 @@ impl IndexTool for GetObjectStructureTool {
                         .collect();
                     json!({ "matched": matched, "truncated": truncated, "results": results })
                 }
-            } else if let Some(arr) = args.get("full_names").and_then(|v| v.as_array())
-            {
+            } else if let Some(arr) = args.get("full_names").and_then(|v| v.as_array()) {
                 // Конкуррентно: каждый элемент берёт своё соединение из пула и
                 // исполняется в spawn_blocking (mass_map). Нестроковые элементы
                 // получают {error} на своей позиции без обращения к пулу.

@@ -1,66 +1,116 @@
 # Windows EXE Installer
 
-This project can be packaged as a Windows `.exe` installer with Inno Setup for
-local deployments and controlled on-premise pilot / production v1 rollout.
+The production Windows package is a per-user Inno Setup installer. Its default
+location is `%LOCALAPPDATA%\1c-ai-workbench`; administrator privileges are not
+required.
 
-## What the Installer Does
+## Production boundary
 
-- Installs the workbench to `C:\1c-ai-workbench` by default.
-- Creates `C:\1c-ai-client\dump` for 1C configuration exports.
-- Creates Start Menu and optional Desktop shortcuts.
-- Launches `START_HERE.ps1` through PowerShell with process-scoped execution bypass.
-- Includes repository docs, configs, scripts, prompts, rules, demo files, and available packaged tools.
-- Preserves the current default operating model: local, read-only, no automatic live writes.
+The installer contains the workbench, `bsl-indexer.exe`, the exact Python
+dependency lock, and an optional verified offline wheelhouse. It never bundles
+proprietary 1C binaries, writes to a live 1C database, or installs optional
+integration packs.
 
-## What the Installer Does Not Do
-
-- It does not install third-party integration tools.
-- It does not install Git, Python, Rust, 1C Platform, or MCP clients.
-- It does not download binaries.
-- It does not provide SaaS services or cloud hosting.
-- It does not bundle proprietary 1C binaries.
-- It does not include `.git`, `generated`, `logs`, `dist`, local agent folders, databases, secrets, or environment files.
-
-## Build Requirement
-
-Install Inno Setup 6 on the build machine:
+The target computer must already have 64-bit CPython 3.11. A production package
+with the wheelhouse can create its virtual environment without network access:
 
 ```powershell
-winget install JRSoftware.InnoSetup
+.\scripts\setup.ps1 -Offline -SkipBinaryDownload
 ```
 
-Manual download is also fine: https://jrsoftware.org/isinfo.php
+Offline mode verifies every wheel against `offline-wheelhouse\SHA256SUMS.txt`,
+uses the hash-locked `requirements-production.lock`, passes `--no-index` to pip,
+does not upgrade pip, and does not download the indexer.
 
-## Build Command
+## Reproducible build
 
-From the repository root:
+Install Inno Setup 6.7.3, build the Rust release binary, then run:
 
 ```powershell
-.\scripts\19_build_windows_installer.ps1
+.\scripts\23_prepare_offline_wheelhouse.ps1
+.\scripts\19_build_windows_installer.ps1 `
+  -AppVersion "0.9.0-rc1" `
+  -OfflineWheelhouse ".\dist\offline-wheelhouse" `
+  -RequireOfflineWheelhouse
 ```
 
-Optional version override:
+The wheelhouse builder accepts only 64-bit CPython 3.11 on Windows, downloads
+binary wheels from the hash-locked requirements, and writes wheel and lock
+metadata. Generated wheels remain under `dist` and are not committed.
 
-```powershell
-.\scripts\19_build_windows_installer.ps1 -AppVersion "0.1.0-phase-b"
-```
-
-Expected output:
+The build produces:
 
 ```text
 dist\installer\1c-ai-workbench-setup-<version>.exe
+dist\installer\1c-ai-workbench-setup-<version>.exe.sha256
 ```
 
-## Validation
+## Authenticode signing
 
-The build wrapper checks:
+Unsigned builds are supported for local testing. Production publication is
+fail-closed and requires a real code-signing certificate available in the
+Windows certificate store:
 
-- `START_HERE.ps1` exists.
-- Inno Setup compiler `ISCC.exe` is available.
-- `configs\integration-packs.json` is valid JSON.
-- The generated installer exists after compilation.
+```powershell
+.\scripts\19_build_windows_installer.ps1 `
+  -AppVersion "0.9.0" `
+  -OfflineWheelhouse ".\dist\offline-wheelhouse" `
+  -RequireOfflineWheelhouse `
+  -SignCertificateThumbprint "<real certificate thumbprint>" `
+  -RequireSignature
+```
 
-The installer itself is intentionally an operational shell around the existing
-workbench. It preserves the production v1 boundary: local read-only workbench,
-controlled on-premise rollout, no bundled proprietary 1C binaries, and no
-automatic installers for external tools.
+The build uses SHA-256 for the file digest, RFC 3161 timestamping, and validates
+the resulting Authenticode signature before returning success. No placeholder
+certificate or self-signed production substitute is accepted.
+
+The GitHub release workflow additionally requires encrypted repository secrets
+`WINDOWS_SIGNING_CERT_PFX_BASE64` and
+`WINDOWS_SIGNING_CERT_PFX_PASSWORD`. It imports the certificate only on the
+ephemeral runner, verifies the signed installer, publishes checksums, and removes
+the temporary PFX and certificate afterward.
+
+## Upgrade and uninstall policy
+
+The production AppId is stable and `UsePreviousAppDir=yes`, so an installer with
+a newer version upgrades the existing per-user installation in place.
+
+An older numeric version is rejected by default. An approved emergency rollback
+can explicitly pass `/ALLOWDOWNGRADE=1`; this must be treated as a controlled
+operator action, not as the normal update path.
+
+- Managed application files are replaced during upgrade.
+- `generated` and `logs` are treated as user data and are preserved during both
+  upgrade and uninstall.
+- The reproducible `.venv` and Python cache directories are removed by
+  uninstall.
+- Installed application files, shortcuts, and registry registration are removed
+  by Inno Setup.
+
+The remaining `generated`/`logs` directory can be archived or deleted manually
+after the user confirms that its indexes, reports, and diagnostics are no longer
+needed.
+
+## Automated acceptance
+
+The following test uses an isolated temporary directory and a non-production
+AppId, so it cannot overwrite an existing installation:
+
+```powershell
+.\scripts\24_test_windows_installer.ps1 `
+  -InstallerPath ".\dist\installer-ci1\1c-ai-workbench-setup-0.9.0.1.exe" `
+  -UpgradeInstallerPath ".\dist\installer-ci2\1c-ai-workbench-setup-0.9.0.2.exe"
+```
+
+It proves silent install, offline dependency installation, managed payload
+presence, upgrade preservation, default downgrade rejection, runtime cleanup,
+user-data preservation, and silent uninstall. CI also proves that
+`-RequireSignature` rejects missing certificate material.
+
+## External production prerequisite
+
+The repository can prove all unsigned behavior and the fail-closed signing path.
+Actual CA trust, timestamp availability, and Microsoft SmartScreen reputation
+can only be verified after a real production Authenticode certificate is
+provisioned. A production release must not be published until that signed run is
+green.

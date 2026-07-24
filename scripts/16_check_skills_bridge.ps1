@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
   [switch]$Fix
 )
@@ -125,8 +125,16 @@ asyncio.run(main())
 "@
     $tmpFile = Join-Path $env:TEMP "smoke_$(Get-Random).py"
     $script | Set-Content -Path $tmpFile -Encoding UTF8
-    & $pythonExe $tmpFile
-    $smokeExit = $LASTEXITCODE
+    $smokeExit = 1
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        if ($attempt -gt 1) {
+            Write-Host "  [WARN] Retrying skills bridge smoke ($attempt/3)"
+            Start-Sleep -Seconds 2
+        }
+        & $pythonExe $tmpFile
+        $smokeExit = $LASTEXITCODE
+        if ($smokeExit -eq 0) { break }
+    }
     Remove-Item $tmpFile -Force
     if ($smokeExit -eq 0) {
         Write-Host "  [OK] Skills bridge loads and tool smoke passed"

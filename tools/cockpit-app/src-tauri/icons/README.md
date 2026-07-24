@@ -3,7 +3,7 @@
 Tauri 2.x requires platform-specific icon files referenced from
 `tauri.conf.json` → `bundle.icon`:
 
-```
+```text
 icons/
 ├── 32x32.png
 ├── 128x128.png

@@ -262,9 +262,7 @@ fn visit_element(node: tree_sitter::Node, ctx: &mut VisitContext) {
 
         // ── variables-таблица ──────────────────────────────────────────
         // input/select/textarea с name → переменная
-        if matches!(tname.as_str(), "input" | "select" | "textarea")
-            && name_attr.is_some()
-        {
+        if matches!(tname.as_str(), "input" | "select" | "textarea") && name_attr.is_some() {
             ctx.variables.push(ParsedVariable {
                 name: name_attr.clone().unwrap(),
                 value: attr("value").or_else(|| attr("type")),
@@ -334,7 +332,9 @@ fn visit_script_element(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let line_end = node.end_position().row + 1;
 
     let open = find_open_tag(node);
-    let attrs = open.map(|t| collect_attributes(t, ctx.source)).unwrap_or_default();
+    let attrs = open
+        .map(|t| collect_attributes(t, ctx.source))
+        .unwrap_or_default();
     let attr = |name: &str| -> Option<String> {
         attrs
             .iter()
@@ -423,7 +423,11 @@ mod tests {
         let html = r#"<form id="login"><input name="user"></form>"#;
         let r = parse(html);
         // У формы id, поэтому в classes по двум правилам? — проверяем что только одна запись
-        let form_records: Vec<_> = r.classes.iter().filter(|c| c.name.starts_with("form_")).collect();
+        let form_records: Vec<_> = r
+            .classes
+            .iter()
+            .filter(|c| c.name.starts_with("form_"))
+            .collect();
         assert_eq!(form_records.len(), 1, "ровно одна form-запись");
         assert_eq!(form_records[0].name, "form_login");
     }
@@ -443,7 +447,11 @@ mod tests {
 </form>
 </body></html>"#;
         let r = parse(html);
-        let forms: Vec<_> = r.classes.iter().filter(|c| c.name.starts_with("form_")).collect();
+        let forms: Vec<_> = r
+            .classes
+            .iter()
+            .filter(|c| c.name.starts_with("form_"))
+            .collect();
         assert_eq!(forms.len(), 1);
         // Форма на строке 2 (1-based)
         assert_eq!(forms[0].name, "form_2");
@@ -508,7 +516,11 @@ mod tests {
     fn external_script_is_import_not_function() {
         let html = r#"<script src="/cdn/lib.js"></script>"#;
         let r = parse(html);
-        assert_eq!(r.functions.len(), 0, "external <script src> не должен быть функцией");
+        assert_eq!(
+            r.functions.len(),
+            0,
+            "external <script src> не должен быть функцией"
+        );
         assert!(r.imports.iter().any(|i| i.kind == "script"));
     }
 

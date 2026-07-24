@@ -144,8 +144,8 @@ impl IndexTool for GetFormHandlersTool {
                              ORDER BY form_name LIMIT 50",
                         );
                         if let Ok(mut stmt) = stmt {
-                            let rows = stmt
-                                .query_map(params!["default", key], |r| r.get::<_, String>(0));
+                            let rows =
+                                stmt.query_map(params!["default", key], |r| r.get::<_, String>(0));
                             if let Ok(rows) = rows {
                                 available.extend(rows.flatten());
                             }

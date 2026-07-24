@@ -18,6 +18,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
 влечёт.
 
 **Рассмотренные варианты:**
+
 1. Вариант A — не встраивать ресурсы, а чинить `.iss` инсталлятор, чтобы он
    копировал workbench рядом с `.exe`.
 2. Вариант B — встроить минимальный набор ресурсов внутрь `.exe` через
@@ -40,7 +41,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
 **Что встраивать (минимальный набор для offline v1):**
 
 | Ресурс | Назначение | Ориентировочный размер |
-|--------|-----------|------------------------|
+| -------- | ----------- | ------------------------ |
 | `tools/code-index-mcp/target/release/bsl-indexer.exe` | Rust MCP сервер для индексации BSL/XML | ≈ 25 МБ |
 | `tools/skills-bridge/**` | Python FastMCP сервер `1c-skills` | ≈ 5 МБ |
 | `tools/prompt-gallery/**` | Python FastMCP сервер `1c-prompt-gallery` | ≈ 5 МБ |
@@ -50,6 +51,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
 Итого: ≈ +40–45 МБ к текущему `.exe`.
 
 **Что НЕ встраивать:**
+
 - Customer-данные: `dump/`, `generated/index/source-mirror/`, `.code-index/`.
 - Сгенерированные артефакты: `generated/code-index-home/`,
   `generated/help-index/`, `generated/reports/`.
@@ -62,6 +64,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
   вне scope v1).
 
 **Layout ресурсов и распаковка:**
+
 - В `.exe` ресурсы попадают через `bundle.resources` в `tauri.conf.json`
   (или через `externalBin` для `bsl-indexer.exe`, если требуется отдельный
   бинарник с правами).
@@ -79,14 +82,14 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
   при аварийном завершении.
 
 **Size budget:**
+
 - Текущий `cockpit-app.exe` ≈ 20,9 МБ (по данным баг-репорта).
 - Добавка: `bsl-indexer.exe` 25 МБ + три Python-пакета ≈ 15 МБ +
   зависимости/накладные расходы ≈ 5 МБ.
 - Итоговый `.exe` ≈ 65 МБ.
 
-
-
 **Влияние на code signing:**
+
 - Встраивание ресурсов меняет байтовое содержимое `.exe`, следовательно,
   меняется хеш и требуется повторная подпись.
 - SmartScreen / Defender SmartScreen reputation привязана к хешу подписанного
@@ -101,6 +104,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
 - Рекомендация: автоматизировать подпись в CI и вести журнал хешей релизов.
 
 **Путь обновления bsl-indexer:**
+
 1. Вариант (a) — полная пересборка `.exe` с новой версией `bsl-indexer.exe`.
    Рекомендуется для v1: просто, предсказуемо, не требует серверной
    инфраструктуры для доставки обновлений.
@@ -113,6 +117,7 @@ Python-MCP серверы (`skills-bridge`, `prompt-gallery`, `help-index-mcp`),
 self-update channel.
 
 **Cross-platform:**
+
 - v1 — только Windows 10/11, что зафиксировано в
   операционном runbook.
 - v2+:
@@ -125,7 +130,7 @@ self-update channel.
 **Risk register:**
 
 | Риск | Вероятность | Влияние | Митигация |
-|------|-------------|---------|-----------|
+| ------ | ------------- | --------- | ----------- |
 | Антивирусные false positives: встраивание бинарника (`bsl-indexer.exe`) внутрь `.exe` может выглядеть для эвристики как упаковка/внедрение полезной нагрузки. | средняя | высокое | Подписывать `.exe` EV сертификатом; отправлять каждый релиз на вайтлистинг в Microsoft, VirusTotal; избегать UPX/самораспаковки; вести журнал ложных срабатываний. |
 | Раздувание размера дистрибутива: +45 МБ увеличивает время скачивания и занимаемое место. | высокая | среднее | Зафиксировать бюджет < 100 МБ; в Phase B рассмотреть сжатие Python-зависимостей (zipapp, standalone Python) или вариант (b) обновления. |
 | Time-to-first-launch: распаковка 40+ МБ на медленном диске может занять десятки секунд, пользователь видит "зависший" экран. | средняя | высокое | Показывать progress bar в onboarding; распаковывать lazy по мере необходимости (сначала `bsl-indexer`, затем Python MCP); кэшировать между запусками. |
@@ -133,6 +138,7 @@ self-update channel.
 | Несовпадение версий: sentinel от старой сборки может маскировать устаревшие ресурсы после обновления `.exe`. | низкая | высокое | Включать версию сборки в имя/содержимое sentinel; при несовпадении версий перераспаковывать полностью. |
 
 **Последствия:**
+
 - `tauri.conf.json` получит ненулевой `bundle.resources`.
 - Появится setup-hook / модуль распаковки в `tools/cockpit-app/src-tauri/src/`.
 - `config.rs` будет использовать `%APPDATA%\1c-ai-workbench\embedded\` как
@@ -142,6 +148,7 @@ self-update channel.
   code signing и мониторинг SmartScreen reputation.
 
 **Compliance с BORROWING_MAP:**
+
 - Есть ли заимствование? нет, используются собственные компоненты проекта.
 - Если да — указана ли лицензия? не применимо.
 - Нарушает ли границы? нет, встроенные ресурсы остаются read-only и не

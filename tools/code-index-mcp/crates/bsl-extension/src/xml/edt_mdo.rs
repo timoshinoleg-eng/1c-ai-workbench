@@ -55,8 +55,7 @@ pub(crate) fn edt_type_to_cfg(t: &str) -> String {
     // Ссылочные и определяемые типы → префикс `cfg:` (classify_type/pretty_one_type
     // ждут именно его). `CatalogRef.X`, `DocumentRef.X`, `EnumRef.X`, `AnyRef`,
     // `DefinedType.X`, обобщённый `CatalogRef` (без имени).
-    if t == "AnyRef" || t.ends_with("Ref") || t.contains("Ref.") || t.starts_with("DefinedType.")
-    {
+    if t == "AnyRef" || t.ends_with("Ref") || t.contains("Ref.") || t.starts_with("DefinedType.") {
         return format!("cfg:{}", t);
     }
     // Прочие платформенные типы (UUID, ValueStorage, ...) — как есть: для
@@ -205,16 +204,26 @@ pub fn parse_mdo_structure_xml(content: &str) -> Result<ObjectStructure> {
                             tt = T::FillChecking;
                         }
                     }
-                    "posting" | "realTimePosting" | "registerRecordsDeletion"
+                    "posting"
+                    | "realTimePosting"
+                    | "registerRecordsDeletion"
                     | "registerRecordsWritingOnPost" => {
                         if field.is_none() {
                             cur_posting_prop = Some(cap_first(&local));
                             tt = T::PostingProp;
                         }
                     }
-                    "informationRegisterPeriodicity" | "writeMode" | "registerType"
-                    | "numberType" | "numberLength" | "numberPeriodicity" | "checkUnique"
-                    | "autonumbering" | "hierarchical" | "codeLength" | "descriptionLength" => {
+                    "informationRegisterPeriodicity"
+                    | "writeMode"
+                    | "registerType"
+                    | "numberType"
+                    | "numberLength"
+                    | "numberPeriodicity"
+                    | "checkUnique"
+                    | "autonumbering"
+                    | "hierarchical"
+                    | "codeLength"
+                    | "descriptionLength" => {
                         if field.is_none() {
                             cur_header_prop = Some(cap_first(&local));
                             tt = T::HeaderProp;
@@ -313,7 +322,8 @@ pub fn parse_mdo_structure_xml(content: &str) -> Result<ObjectStructure> {
                                         out.enum_values.push(name);
                                     }
                                     FieldKind::Command => {
-                                        let syn = fb.synonym.filter(|s| !s.is_empty() && s != &name);
+                                        let syn =
+                                            fb.synonym.filter(|s| !s.is_empty() && s != &name);
                                         out.commands.push((name, syn));
                                     }
                                     _ => {
@@ -327,7 +337,9 @@ pub fn parse_mdo_structure_xml(content: &str) -> Result<ObjectStructure> {
                                             FieldKind::Dimension => out.dimensions.push(f),
                                             FieldKind::Resource => out.resources.push(f),
                                             FieldKind::TabAttr => match cur_tab {
-                                                Some(i) => out.tabular_sections[i].attributes.push(f),
+                                                Some(i) => {
+                                                    out.tabular_sections[i].attributes.push(f)
+                                                }
                                                 None => out.attributes.push(f),
                                             },
                                             _ => out.attributes.push(f),
@@ -803,9 +815,7 @@ pub fn detect_edt_src(repo_root: &Path) -> Option<PathBuf> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        if entry.file_type().is_file()
-            && entry.file_name().to_str() == Some("Configuration.mdo")
-        {
+        if entry.file_type().is_file() && entry.file_name().to_str() == Some("Configuration.mdo") {
             if let Some(cfg_dir) = entry.path().parent() {
                 if cfg_dir.file_name().and_then(|s| s.to_str()) == Some("Configuration") {
                     if let Some(src) = cfg_dir.parent() {
@@ -880,7 +890,9 @@ mod tests {
         assert!(edges
             .iter()
             .all(|e| e.from_path == "Автор" && e.link_kind == "attr" && e.is_composite));
-        assert!(edges.iter().any(|e| e.to_object == "Catalog.ВнешниеПользователи"));
+        assert!(edges
+            .iter()
+            .any(|e| e.to_object == "Catalog.ВнешниеПользователи"));
         assert!(edges.iter().any(|e| e.to_object == "Catalog.Пользователи"));
     }
 
@@ -908,7 +920,10 @@ mod tests {
         assert_eq!(s.tabular_sections[0].name, "Товары");
         assert_eq!(s.tabular_sections[0].attributes[0].name, "Номенклатура");
         // Свойства проведения.
-        assert!(s.posting.iter().any(|(k, v)| k == "Posting" && v == "Allow"));
+        assert!(s
+            .posting
+            .iter()
+            .any(|(k, v)| k == "Posting" && v == "Allow"));
         assert!(s
             .posting
             .iter()
@@ -918,7 +933,9 @@ mod tests {
         // recorder: 2 регистра; attr: Организация; tabular_attr: Товары.Номенклатура.
         let rec: Vec<_> = edges.iter().filter(|e| e.link_kind == "recorder").collect();
         assert_eq!(rec.len(), 2);
-        assert!(rec.iter().any(|e| e.to_object == "AccumulationRegister.ПрочиеРасчеты"));
+        assert!(rec
+            .iter()
+            .any(|e| e.to_object == "AccumulationRegister.ПрочиеРасчеты"));
         assert!(edges
             .iter()
             .any(|e| e.link_kind == "attr" && e.to_object == "Catalog.Организации"));
@@ -942,7 +959,10 @@ mod tests {
         assert_eq!(s.dimensions.len(), 2);
         assert_eq!(s.resources.len(), 1);
         assert_eq!(s.resources[0].type_str, "Число");
-        assert!(s.properties.iter().any(|(k, v)| k == "RegisterType" && v == "Balance"));
+        assert!(s
+            .properties
+            .iter()
+            .any(|(k, v)| k == "RegisterType" && v == "Balance"));
 
         let edges = parse_mdo_datalinks_xml(REGISTER_MDO).unwrap();
         // Оба измерения ссылочные → register_dim; ресурс (Число) — не ссылка.
@@ -972,8 +992,14 @@ mod tests {
     fn edt_type_normalization() {
         assert_eq!(edt_type_to_cfg("String"), "xs:string");
         assert_eq!(edt_type_to_cfg("Number"), "xs:decimal");
-        assert_eq!(edt_type_to_cfg("CatalogRef.Товары"), "cfg:CatalogRef.Товары");
-        assert_eq!(edt_type_to_cfg("DefinedType.Сумма"), "cfg:DefinedType.Сумма");
+        assert_eq!(
+            edt_type_to_cfg("CatalogRef.Товары"),
+            "cfg:CatalogRef.Товары"
+        );
+        assert_eq!(
+            edt_type_to_cfg("DefinedType.Сумма"),
+            "cfg:DefinedType.Сумма"
+        );
         assert_eq!(edt_type_to_cfg("AnyRef"), "cfg:AnyRef");
     }
 

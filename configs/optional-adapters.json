@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": 1,
+  "default_policy": {
+    "enabled": false,
+    "installer_bundled": false,
+    "inherit_credentials": false,
+    "allow_write_operations": false,
+    "allowed_roots": []
+  },
+  "adapters": [
+    {
+      "id": "mxl-merge-tool",
+      "version": "0.1.0",
+      "source": "https://github.com/alexiosus/mxl-merge-tool",
+      "license": "MIT",
+      "enabled": false,
+      "installer_bundled": false,
+      "inherit_credentials": false,
+      "allow_write_operations": false,
+      "allowed_roots": [],
+      "activation_gate": "Run upstream tests and a workbench-owned disposable repository contract before enabling repository-local merge wiring.",
+      "removal": "Remove the external checkout and its repository-local Git attributes/config entries."
+    },
+    {
+      "id": "1c-odata-mcp",
+      "version": "0.3.0",
+      "source": "https://github.com/evilbruce666/1c-odata-mcp",
+      "license": "MIT",
+      "enabled": false,
+      "installer_bundled": false,
+      "inherit_credentials": false,
+      "allow_write_operations": false,
+      "allowed_roots": [],
+      "activation_gate": "Use a disposable read-only OData account and pass a separate security review; write tools require a different explicit approval.",
+      "removal": "Stop the external MCP process and remove its isolated untracked credential profile."
+    },
+    {
+      "id": "feenlace-mcp-1c",
+      "version": "1.11.2",
+      "source": "https://github.com/feenlace/mcp-1c",
+      "license": "MIT",
+      "enabled": false,
+      "installer_bundled": false,
+      "inherit_credentials": false,
+      "allow_write_operations": false,
+      "allowed_roots": [],
+      "activation_gate": "Confirm the free-core boundary and use an isolated disposable infobase before interoperability testing.",
+      "removal": "Stop and remove the external binary and its isolated configuration."
+    }
+  ]
+}

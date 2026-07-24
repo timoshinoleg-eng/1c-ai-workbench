@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 
 use super::types::{
-    sha256_hex, hash_ast,
-    ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport, ParsedVariable,
+    hash_ast, sha256_hex, ParseResult, ParsedCall, ParsedClass, ParsedFunction, ParsedImport,
+    ParsedVariable,
 };
 use super::LanguageParser;
 
@@ -35,7 +35,10 @@ fn node_text<'a>(node: tree_sitter::Node<'a>, source: &'a [u8]) -> &'a str {
 }
 
 /// Найти первый дочерний узел с заданным kind
-fn find_child_by_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
+fn find_child_by_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == kind {
@@ -157,7 +160,14 @@ fn visit_node(
                         visit_class(child, ctx, current_func, depth);
                     }
                     "lexical_declaration" | "variable_declaration" => {
-                        visit_variable_declaration(child, ctx, class_name, current_func, node.kind(), depth);
+                        visit_variable_declaration(
+                            child,
+                            ctx,
+                            class_name,
+                            current_func,
+                            node.kind(),
+                            depth,
+                        );
                     }
                     _ => {
                         visit_node(child, ctx, class_name, current_func, node.kind(), depth + 1);
@@ -185,7 +195,8 @@ fn visit_function_declaration(
     let source = ctx.source;
 
     // Имя функции: поле name (identifier)
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -198,7 +209,8 @@ fn visit_function_declaration(
     let line_end = node.end_position().row + 1;
 
     // Параметры
-    let args = node.child_by_field_name("parameters")
+    let args = node
+        .child_by_field_name("parameters")
         .map(|n| node_text(n, source).to_string());
 
     // is_async: ищем "async" среди дочерних узлов перед именем функции
@@ -229,7 +241,14 @@ fn visit_function_declaration(
     if let Some(body_node) = node.child_by_field_name("body") {
         let mut cursor = body_node.walk();
         for child in body_node.children(&mut cursor) {
-            visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+            visit_node(
+                child,
+                ctx,
+                class_name,
+                Some(&name.clone()),
+                body_node.kind(),
+                1,
+            );
         }
     }
 }
@@ -244,7 +263,8 @@ fn visit_method_definition(
     let source = ctx.source;
 
     // Имя метода: поле name
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -259,7 +279,8 @@ fn visit_method_definition(
     let line_end = node.end_position().row + 1;
 
     // Параметры из поля value (function)
-    let args = node.child_by_field_name("value")
+    let args = node
+        .child_by_field_name("value")
         .and_then(|func_node| func_node.child_by_field_name("parameters"))
         .map(|n| node_text(n, source).to_string());
 
@@ -288,7 +309,14 @@ fn visit_method_definition(
         if let Some(body_node) = func_val.child_by_field_name("body") {
             let mut cursor = body_node.walk();
             for child in body_node.children(&mut cursor) {
-                visit_node(child, ctx, class_name, Some(&name.clone()), body_node.kind(), 1);
+                visit_node(
+                    child,
+                    ctx,
+                    class_name,
+                    Some(&name.clone()),
+                    body_node.kind(),
+                    1,
+                );
             }
         }
     }
@@ -345,11 +373,14 @@ fn visit_variable_declarator(
 
                 let qualified_name = class_name.map(|cn| format!("{}.{}", cn, var_name));
 
-                let args = val.child_by_field_name("parameters")
+                let args = val
+                    .child_by_field_name("parameters")
                     .map(|n| node_text(n, source).to_string())
                     // Одиночный параметр стрелочной функции: `x => x+1`
-                    .or_else(|| val.child_by_field_name("parameter")
-                        .map(|n| node_text(n, source).to_string()));
+                    .or_else(|| {
+                        val.child_by_field_name("parameter")
+                            .map(|n| node_text(n, source).to_string())
+                    });
 
                 let is_async = is_async_node(val, source);
                 let docstring = extract_jsdoc(node.parent().unwrap_or(node), source);
@@ -374,13 +405,23 @@ fn visit_variable_declarator(
                 if let Some(body_node) = val.child_by_field_name("body") {
                     let mut cursor = body_node.walk();
                     for child in body_node.children(&mut cursor) {
-                        visit_node(child, ctx, class_name, Some(&var_name.clone()), body_node.kind(), depth + 1);
+                        visit_node(
+                            child,
+                            ctx,
+                            class_name,
+                            Some(&var_name.clone()),
+                            body_node.kind(),
+                            depth + 1,
+                        );
                     }
                 }
             }
             _ => {
                 // Обычная переменная — сохраняем только на верхнем уровне программы
-                if parent_kind == "program" || parent_kind == "module" || parent_kind == "export_statement" {
+                if parent_kind == "program"
+                    || parent_kind == "module"
+                    || parent_kind == "export_statement"
+                {
                     let value_text = node_text(val, source);
                     let value = if value_text.chars().count() > 200 {
                         value_text.chars().take(200).collect()
@@ -410,7 +451,8 @@ fn visit_class(
     let source = ctx.source;
 
     // Имя класса
-    let name = node.child_by_field_name("name")
+    let name = node
+        .child_by_field_name("name")
         .map(|n| node_text(n, source).to_string())
         .unwrap_or_default();
 
@@ -423,8 +465,8 @@ fn visit_class(
 
     // Базовые классы: узел class_heritage (extends X)
     // В tree-sitter-javascript это не поле, а дочерний узел типа "class_heritage"
-    let bases = find_child_by_kind(node, "class_heritage")
-        .map(|n| node_text(n, source).to_string());
+    let bases =
+        find_child_by_kind(node, "class_heritage").map(|n| node_text(n, source).to_string());
 
     let docstring = extract_jsdoc(node, source);
     let body = node_text(node, source).to_string();
@@ -444,7 +486,14 @@ fn visit_class(
     if let Some(class_body) = node.child_by_field_name("body") {
         let mut cursor = class_body.walk();
         for child in class_body.children(&mut cursor) {
-            visit_node(child, ctx, Some(&name), current_func, class_body.kind(), depth + 1);
+            visit_node(
+                child,
+                ctx,
+                Some(&name),
+                current_func,
+                class_body.kind(),
+                depth + 1,
+            );
         }
     }
 }
@@ -455,12 +504,11 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
     let line = node.start_position().row + 1;
 
     // Источник импорта: поле source (string-literal "module-name")
-    let module = node.child_by_field_name("source")
-        .map(|n| {
-            // Убираем кавычки
-            let text = node_text(n, source);
-            text.trim_matches(|c| c == '"' || c == '\'').to_string()
-        });
+    let module = node.child_by_field_name("source").map(|n| {
+        // Убираем кавычки
+        let text = node_text(n, source);
+        text.trim_matches(|c| c == '"' || c == '\'').to_string()
+    });
 
     // Импортируемые имена: import_clause
     let mut cursor = node.walk();
@@ -501,9 +549,11 @@ fn visit_import(node: tree_sitter::Node, ctx: &mut VisitContext) {
                             let mut ni_cursor = clause_child.walk();
                             for import_spec in clause_child.children(&mut ni_cursor) {
                                 if import_spec.kind() == "import_specifier" {
-                                    let spec_name = import_spec.child_by_field_name("name")
+                                    let spec_name = import_spec
+                                        .child_by_field_name("name")
                                         .map(|n| node_text(n, source).to_string());
-                                    let spec_alias = import_spec.child_by_field_name("alias")
+                                    let spec_alias = import_spec
+                                        .child_by_field_name("alias")
                                         .map(|n| node_text(n, source).to_string());
                                     ctx.imports.push(ParsedImport {
                                         module: module.clone(),
@@ -548,7 +598,11 @@ fn visit_call(node: tree_sitter::Node, ctx: &mut VisitContext, current_func: Opt
     };
 
     let caller = current_func.unwrap_or("<module>").to_string();
-    ctx.calls.push(ParsedCall { caller, callee, line });
+    ctx.calls.push(ParsedCall {
+        caller,
+        callee,
+        line,
+    });
 }
 
 /// Определить, является ли функция асинхронной (наличие "async" keyword)
@@ -632,7 +686,11 @@ mod tests {
         assert_eq!(result.classes.len(), 1);
         assert_eq!(result.classes[0].name, "Animal");
         // Методы класса должны быть извлечены
-        assert!(result.functions.len() >= 1, "ожидаем методы класса: {:?}", result.functions);
+        assert!(
+            result.functions.len() >= 1,
+            "ожидаем методы класса: {:?}",
+            result.functions
+        );
     }
 
     #[test]
@@ -640,7 +698,11 @@ mod tests {
         let parser = JavaScriptParser::new();
         let source = "const add = (a, b) => a + b;\n";
         let result = parser.parse(source, "test.js").unwrap();
-        assert_eq!(result.functions.len(), 1, "стрелочная функция должна быть в functions");
+        assert_eq!(
+            result.functions.len(),
+            1,
+            "стрелочная функция должна быть в functions"
+        );
         assert_eq!(result.functions[0].name, "add");
     }
 
@@ -649,7 +711,11 @@ mod tests {
         let parser = JavaScriptParser::new();
         let source = "import React from 'react';\nimport { useState, useEffect } from 'react';\n";
         let result = parser.parse(source, "test.js").unwrap();
-        assert!(result.imports.len() >= 2, "ожидаем минимум 2 импорта, получили: {:?}", result.imports);
+        assert!(
+            result.imports.len() >= 2,
+            "ожидаем минимум 2 импорта, получили: {:?}",
+            result.imports
+        );
     }
 
     #[test]

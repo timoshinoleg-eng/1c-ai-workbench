@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use code_index_core::extension::{IndexTool, LanguageProcessor};
+use code_index_core::extension::{IndexTool, LanguageProcessor, ParseExtrasCollector};
 use code_index_core::parser::{bsl::BslParser, LanguageParser};
 use code_index_core::storage::Storage;
 
@@ -20,7 +20,9 @@ pub struct BslLanguageProcessor {
 
 impl BslLanguageProcessor {
     pub fn new() -> Self {
-        Self { parser: BslParser::new() }
+        Self {
+            parser: BslParser::new(),
+        }
     }
 }
 
@@ -72,10 +74,7 @@ impl LanguageProcessor for BslLanguageProcessor {
             .min_depth(2)
             .into_iter()
             .filter_map(|e| e.ok())
-            .any(|e| {
-                e.file_type().is_file()
-                    && e.file_name().to_str() == Some("Configuration.xml")
-            })
+            .any(|e| e.file_type().is_file() && e.file_name().to_str() == Some("Configuration.xml"))
     }
 
     /// SQLite-расширения схемы для конфигураций 1С: `metadata_objects`,
@@ -140,6 +139,14 @@ impl LanguageProcessor for BslLanguageProcessor {
         storage: &mut Storage,
     ) -> anyhow::Result<()> {
         crate::index_extras::run_index_extras(repo_root, storage)
+    }
+
+    /// Сборщик extras для параллельного парсинга (полный путь индексации).
+    /// Вытаскивает BSL-сырьё (обращения к объектам МД и т.д.) из горячих в RAM
+    /// parse_results вместо повторного чтения диска в `index_extras`.
+    /// Реализация — [`crate::parse_collector::BslParseCollector`].
+    fn parse_collector(&self) -> Option<Box<dyn ParseExtrasCollector>> {
+        Some(Box::new(crate::parse_collector::BslParseCollector::new()))
     }
 
     /// Инкрементальное обновление extras для файлов одного watcher-батча.
@@ -246,7 +253,10 @@ mod tests {
         std::fs::create_dir_all(&deep).unwrap();
         std::fs::File::create(deep.join("Configuration.xml")).unwrap();
         let p = BslLanguageProcessor::new();
-        assert!(!p.detects(tmp.path()), "слишком глубоко — не должны срабатывать");
+        assert!(
+            !p.detects(tmp.path()),
+            "слишком глубоко — не должны срабатывать"
+        );
     }
 
     #[test]

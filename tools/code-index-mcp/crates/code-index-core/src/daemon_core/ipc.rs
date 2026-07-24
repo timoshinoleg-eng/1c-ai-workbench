@@ -157,10 +157,7 @@ pub struct StopResponse {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ToolUnavailable {
     /// Первичная или массовая переиндексация в процессе.
-    Indexing {
-        progress: Progress,
-        message: String,
-    },
+    Indexing { progress: Progress, message: String },
     /// Запрошенная папка не в конфиге демона.
     NotStarted { message: String },
     /// Демон не отвечает на health-IPC.

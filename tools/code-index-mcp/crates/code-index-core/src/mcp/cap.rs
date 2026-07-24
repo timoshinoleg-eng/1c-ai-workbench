@@ -53,7 +53,8 @@ use serde_json::{json, Value};
 pub const DEFAULT_MAX_RESPONSE_BYTES: usize = 48_000;
 
 /// Подсказка, добавляемая на верхний уровень ответа при усечении.
-pub const CAP_HINT: &str = "Ответ усечён до лимита размера ([mcp].max_response_bytes) во избежание \
+pub const CAP_HINT: &str =
+    "Ответ усечён до лимита размера ([mcp].max_response_bytes) во избежание \
 сброса в файл на стороне клиента. Самые длинные массивы сокращены — рядом с каждым `<ключ>_total` \
 (исходное число элементов) и `<ключ>_truncated`. Нужен полный перечень — запросите точечно \
 (по конкретному имени/фильтру) либо поднимите [mcp].max_response_bytes.";
@@ -65,7 +66,10 @@ static RESPONSE_CAP_BYTES: AtomicUsize = AtomicUsize::new(DEFAULT_MAX_RESPONSE_B
 /// Выставить бюджет (вызывается из serve-init по `[mcp].max_response_bytes`).
 /// `None` → дефолт; `Some(0)` → страж выключен; `Some(n)` → n байт.
 pub fn set_response_cap(bytes: Option<usize>) {
-    RESPONSE_CAP_BYTES.store(bytes.unwrap_or(DEFAULT_MAX_RESPONSE_BYTES), Ordering::Relaxed);
+    RESPONSE_CAP_BYTES.store(
+        bytes.unwrap_or(DEFAULT_MAX_RESPONSE_BYTES),
+        Ordering::Relaxed,
+    );
 }
 
 /// Текущий бюджет в байтах (0 — выключен). Читается обёртками `wrap_with_meta`.
@@ -82,14 +86,15 @@ pub fn response_cap() -> usize {
 pub const DEFAULT_MAX_FUNCTION_BODY_CHARS: usize = 15_000;
 
 /// Порог тела функции/класса (символы). 0 — выключен (тело всегда целиком).
-static FUNCTION_BODY_CAP_CHARS: AtomicUsize =
-    AtomicUsize::new(DEFAULT_MAX_FUNCTION_BODY_CHARS);
+static FUNCTION_BODY_CAP_CHARS: AtomicUsize = AtomicUsize::new(DEFAULT_MAX_FUNCTION_BODY_CHARS);
 
 /// Выставить порог тела (serve-init по `[mcp].max_function_body_chars`).
 /// `None` → дефолт; `Some(0)` → выключено; `Some(n)` → n символов.
 pub fn set_function_body_cap(chars: Option<usize>) {
-    FUNCTION_BODY_CAP_CHARS
-        .store(chars.unwrap_or(DEFAULT_MAX_FUNCTION_BODY_CHARS), Ordering::Relaxed);
+    FUNCTION_BODY_CAP_CHARS.store(
+        chars.unwrap_or(DEFAULT_MAX_FUNCTION_BODY_CHARS),
+        Ordering::Relaxed,
+    );
 }
 
 /// Текущий порог тела в символах (0 — выключен). Читается в get_function/get_class.
@@ -108,8 +113,12 @@ pub fn function_body_cap() -> usize {
 
 /// Дефолтный набор инструментов под cap_response (если `[mcp].cap_tools` пуст).
 /// list-подобные BSL-tools, где обрез до сэмпла + total приемлем.
-pub const DEFAULT_CAP_TOOLS: &[&str] =
-    &["get_event_subscriptions", "bsl_sql", "find_references", "get_register_writers"];
+pub const DEFAULT_CAP_TOOLS: &[&str] = &[
+    "get_event_subscriptions",
+    "bsl_sql",
+    "find_references",
+    "get_register_writers",
+];
 
 fn default_cap_set() -> HashSet<String> {
     DEFAULT_CAP_TOOLS.iter().map(|s| s.to_string()).collect()
@@ -397,7 +406,9 @@ mod tests {
 
     #[test]
     fn truncates_nested_array_under_object() {
-        let items: Vec<Value> = (0..3000).map(|i| json!(format!("реквизит_{}", i))).collect();
+        let items: Vec<Value> = (0..3000)
+            .map(|i| json!(format!("реквизит_{}", i)))
+            .collect();
         let v = json!({
             "result": {
                 "structure": {"attributes": items, "name": "Контрагенты"}
@@ -442,9 +453,15 @@ mod tests {
         // Список содержит инструмент, но глобальный выключатель главнее.
         set_cap_tools(Some(vec!["get_event_subscriptions".to_string()]));
         set_cap_enabled(Some(true));
-        assert!(cap_applies("get_event_subscriptions"), "enabled+в списке → cap применяется");
+        assert!(
+            cap_applies("get_event_subscriptions"),
+            "enabled+в списке → cap применяется"
+        );
         set_cap_enabled(Some(false));
-        assert!(!cap_applies("get_event_subscriptions"), "disabled → cap не применяется ни к чему");
+        assert!(
+            !cap_applies("get_event_subscriptions"),
+            "disabled → cap не применяется ни к чему"
+        );
         // Восстановить дефолты, чтобы не влиять на другие тесты.
         set_cap_enabled(Some(true));
         set_cap_tools(None);
@@ -464,7 +481,10 @@ mod tests {
         // enum-подобная структура: большая map (синонимы) + массив имён + мелочь
         let mut syn = serde_json::Map::new();
         for i in 0..800 {
-            syn.insert(format!("Значение_{}", i), json!(format!("Синоним значения номер {}", i)));
+            syn.insert(
+                format!("Значение_{}", i),
+                json!(format!("Синоним значения номер {}", i)),
+            );
         }
         let values: Vec<Value> = (0..800).map(|i| json!(format!("Значение_{}", i))).collect();
         let v = json!({
@@ -484,7 +504,10 @@ mod tests {
         // самая тяжёлая секция (map синонимов) выкинута целиком + count
         assert_eq!(a["enum_synonyms_omitted"], json!(true));
         assert_eq!(a["enum_synonyms_count"], json!(800));
-        assert!(a.get("enum_synonyms").is_none(), "map должна быть удалена целиком");
+        assert!(
+            a.get("enum_synonyms").is_none(),
+            "map должна быть удалена целиком"
+        );
         // НЕ частичный обрез: оставшийся массив значений — ЦЕЛИКОМ (не схлопнут)
         assert_eq!(a["enum_values"].as_array().unwrap().len(), 800);
         // мелкие структурные поля целы

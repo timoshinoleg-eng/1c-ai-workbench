@@ -50,7 +50,7 @@ AI-модели тратят десятки вызовов `grep`/`find` для 
 | Java | tree-sitter-java | `.java` |
 | Rust | tree-sitter-rust | `.rs` |
 | Go | tree-sitter-go | `.go` |
-| 1С (BSL) | tree-sitter-onescript | `.bsl`, `.os` |
+| 1С (BSL) | tree-sitter-bsl | `.bsl`, `.os` |
 | XML (1С) | quick-xml | `.xml` (метаданные конфигураций) |
 | HTML | tree-sitter-html | `.html`, `.htm` (v0.7.1, по запросу пользователя — см. маппинг ниже) |
 
@@ -297,8 +297,8 @@ code-index serve --transport http --port 8011 --config /etc/code-index/daemon.to
 |------------|----------|
 | `search_function` | Полнотекстовый поиск по функциям (имя, docstring, тело) |
 | `search_class` | Полнотекстовый поиск по классам |
-| `get_function` | Получить функцию по точному имени |
-| `get_class` | Получить класс по точному имени |
+| `get_function` | Получить функцию по точному имени (регистронезависимый fallback; **(v0.44.0)** при 0 совпадений возвращает `did_you_mean` с похожими именами) |
+| `get_class` | Получить класс по точному имени (регистронезависимый fallback; **(v0.44.0)** при 0 совпадений возвращает `did_you_mean` с похожими именами) |
 | `get_callers` | Кто вызывает данную функцию? **(v0.35.0)** каждая запись несёт `path` файла-вызывателя (различает одноимённых вызывателей из разных файлов) |
 | `get_callees` | Что вызывает данная функция? **(v0.35.0)** каждая запись несёт `path` файла-источника |
 | `find_path` | **(v0.23.0)** Кратчайший путь в графе вызовов от функции `from` до `to` (итеративный cycle-safe BFS по уникальным узлам `calls`, `max_depth=5`, любой язык). Возвращает рёбра пути `[{caller, callee, line}]` |
@@ -722,7 +722,7 @@ MIT. См. [LICENSE](LICENSE).
 ## Благодарности
 
 - [tree-sitter](https://tree-sitter.github.io/) — инкрементальный парсер для множества языков
-- [tree-sitter-onescript](https://github.com/1c-syntax/tree-sitter-onescript) — грамматика BSL/OneScript от сообщества 1c-syntax
+- [tree-sitter-bsl](https://github.com/1c-syntax/tree-sitter-bsl) — грамматика BSL от сообщества 1c-syntax
 - [rusqlite](https://github.com/rusqlite/rusqlite) — SQLite для Rust
 - [rayon](https://github.com/rayon-rs/rayon) — параллелизм данных без лишних усилий
 - [rmcp](https://github.com/modelcontextprotocol/rust-sdk) — Rust MCP SDK

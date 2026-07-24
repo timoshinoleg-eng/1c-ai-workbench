@@ -48,7 +48,7 @@ A compiled Rust binary with **one-writer / many-readers** architecture:
 | Java | tree-sitter-java | `.java` |
 | Rust | tree-sitter-rust | `.rs` |
 | Go | tree-sitter-go | `.go` |
-| 1C (BSL) | tree-sitter-onescript | `.bsl`, `.os` |
+| 1C (BSL) | tree-sitter-bsl | `.bsl`, `.os` |
 | XML (1C) | quick-xml | `.xml` (configuration metadata) |
 | HTML | tree-sitter-html | `.html`, `.htm` (v0.7.1, by user request — see HTML-specific mapping below) |
 
@@ -295,8 +295,8 @@ For a shared HTTP process:
 |------|-------------|
 | `search_function` | Full-text search across functions (name, docstring, body) |
 | `search_class` | Full-text search across classes |
-| `get_function` | Get function by exact name |
-| `get_class` | Get class by exact name |
+| `get_function` | Get function by exact name (case-insensitive fallback; **(v0.44.0)** on 0 matches returns `did_you_mean` with similar names) |
+| `get_class` | Get class by exact name (case-insensitive fallback; **(v0.44.0)** on 0 matches returns `did_you_mean` with similar names) |
 | `get_callers` | Who calls this function? **(v0.35.0)** each row carries the caller's source `path` (distinguishes same-named callers from different files) |
 | `get_callees` | What does this function call? **(v0.35.0)** each row carries the source `path` |
 | `find_path` | **(v0.23.0)** Shortest path in the call graph between two functions `from`→`to` (iterative cycle-safe BFS over unique `calls` nodes, `max_depth=5`, any language). Returns path edges `[{caller, callee, line}]` |
@@ -701,7 +701,7 @@ MIT. See [LICENSE](LICENSE).
 ## Acknowledgements
 
 - [tree-sitter](https://tree-sitter.github.io/tree-sitter/) — incremental parsing library
-- [tree-sitter-onescript](https://github.com/1c-syntax/tree-sitter-onescript) — BSL/OneScript grammar by the 1c-syntax community
+- [tree-sitter-bsl](https://github.com/1c-syntax/tree-sitter-bsl) — BSL grammar by the 1c-syntax community
 - [rusqlite](https://github.com/rusqlite/rusqlite) — SQLite bindings for Rust
 - [rayon](https://github.com/rayon-rs/rayon) — data parallelism for Rust
 - [rmcp](https://github.com/modelcontextprotocol/rust-sdk) — Rust MCP SDK

@@ -6,6 +6,7 @@ line-length = 125
 target-version = "py310"
 extend-exclude = [
     "tools/cc-1c-skills",
+    "tools/code-index-mcp",
     "tools/code-index-mcp/target",
     "tools/live-1c-bridge",
     "generated",
@@ -44,6 +45,7 @@ ignore = [
     "B904",  # raise from (overly strict for legacy code)
     "RUF001",  # ambiguous unicode characters (Cyrillic in 1C:Enterprise code)
     "RUF002",  # class-without-metaclass — legacy pattern from cc-1c-skills
+    "RUF003",  # Russian comments legitimately contain Cyrillic lookalikes
     "RUF012",  # mutable class attributes (Fluent API)
     "SIM108",  # ternary if-else — readability preference for explicit blocks
     "UP031",  # use format specifiers instead of percent format (legacy style)
@@ -67,6 +69,7 @@ extend-exclude = '''
 /(
     \.git
   | tools/cc-1c-skills
+  | tools/code-index-mcp
   | tools/live-1c-bridge
   | generated
   | logs

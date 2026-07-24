@@ -9,7 +9,7 @@
 `06_healthcheck.ps1` проверяет ровно шесть вещей:
 
 | # | Чек | Что значит Ready |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `binary exists` | `tools\code-index-mcp\target\release\bsl-indexer.exe` собран |
 | 2 | `index exists` | `generated\index\source-mirror\.code-index\index.db` создан |
 | 3 | `logs writable` | `logs\` доступен на запись |
@@ -34,9 +34,12 @@ cd C:\1c-ai-workbench
 .\scripts\setup.ps1
 ```
 
-`setup.ps1` скачивает `bsl-indexer.exe` из release `v0.9.0-pilot` и проверяет
-SHA256. Если у стенда нет доступа к GitHub Releases, распакуйте release artifact
-в `tools\code-index-mcp\target\release\`.
+`setup.ps1` принимает только `bsl-indexer.exe` версии `code-index 0.45.0`.
+До публикации финального release pin автоматическое скачивание намеренно падает
+закрыто. Используйте подписанный installer с уже встроенным бинарником либо
+передайте проверенные `-ReleaseTag` и `-IndexerSha256`. Если у стенда нет доступа
+к GitHub Releases, распакуйте проверенный release artifact в
+`tools\code-index-mcp\target\release\`.
 
 Source-build fallback для разработчиков: `.\scripts\03_build_bsl_indexer.ps1 -WorkbenchRoot .`.
 Если cargo не находится — установить [rustup](https://rustup.rs/) и перезапустить PowerShell.

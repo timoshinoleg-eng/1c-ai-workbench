@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastmcp import FastMCP
+from tools.common import error_json, timer
 
 from tools import audit_metadata as audit_metadata_tool
 from tools import cf_info as cf_info_tool
@@ -18,7 +19,6 @@ from tools import query_optimizer as query_optimizer_tool
 from tools import role_info as role_info_tool
 from tools import skd_info as skd_info_tool
 from tools import subsystem_info as subsystem_info_tool
-from tools.common import error_json, timer
 
 mcp = FastMCP(
     name="1c-skills",

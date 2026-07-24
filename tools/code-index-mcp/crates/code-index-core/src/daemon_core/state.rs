@@ -51,7 +51,10 @@ impl Default for PathRuntime {
 impl DaemonState {
     pub fn new() -> Self {
         let now = SystemTime::now();
-        let started_at_unix = now.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let started_at_unix = now
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let started_at_rfc3339 = chrono::DateTime::<chrono::Utc>::from(now).to_rfc3339();
         Self {
             inner: Arc::new(RwLock::new(DaemonStateInner {
@@ -71,7 +74,10 @@ impl DaemonState {
     /// Зарегистрировать набор путей в состоянии. Новые пути добавляются
     /// со статусом `NotStarted`; убранные — удаляются; существующие не трогаются.
     /// Возвращает `(added, removed, unchanged)`.
-    pub async fn apply_config(&self, paths: &[PathBuf]) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
+    pub async fn apply_config(
+        &self,
+        paths: &[PathBuf],
+    ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
         let mut guard = self.inner.write().await;
         let mut added = Vec::new();
         let mut unchanged = Vec::new();
@@ -197,7 +203,7 @@ mod tests {
     async fn set_ready_clears_progress() {
         let st = DaemonState::new();
         let path = PathBuf::from("/a");
-        st.apply_config(&[path.clone()]).await;
+        st.apply_config(std::slice::from_ref(&path)).await;
         st.set_status(&path, PathStatus::InitialIndexing).await;
         st.set_progress(&path, Progress::new(10, 100)).await;
 

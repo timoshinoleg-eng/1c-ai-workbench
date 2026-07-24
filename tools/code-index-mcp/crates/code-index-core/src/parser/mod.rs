@@ -1,20 +1,20 @@
-pub mod types;
-pub mod python;
-pub mod javascript;
-pub mod typescript;
-pub mod java;
-pub mod rust_lang;
-pub mod go;
-pub mod text;
 pub mod bsl;
+pub mod go;
 pub mod html;
+pub mod java;
+pub mod javascript;
+pub mod python;
+pub mod rust_lang;
+pub mod text;
+pub mod types;
+pub mod typescript;
 /// Парсер XML-выгрузок 1С (quick-xml, не tree-sitter)
 /// Не регистрируется в ParserRegistry — вызывается напрямую из indexer
 pub mod xml_1c;
 
+use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Result;
 use types::ParseResult;
 
 /// Универсальный интерфейс парсера языка программирования
@@ -39,7 +39,9 @@ pub struct ParserRegistry {
 impl ParserRegistry {
     /// Создать реестр со всеми доступными парсерами
     pub fn new_all() -> Self {
-        let mut registry = Self { parsers: HashMap::new() };
+        let mut registry = Self {
+            parsers: HashMap::new(),
+        };
         registry.register(Arc::new(python::PythonParser::new()));
         registry.register(Arc::new(javascript::JavaScriptParser::new()));
         registry.register(Arc::new(typescript::TypeScriptParser::new()));
@@ -58,7 +60,9 @@ impl ParserRegistry {
     /// docs, sphinx-output, vue/svelte single-file-components и т.п. — но
     /// никогда не указывается как «основной язык» репо в daemon.toml).
     pub fn from_languages(languages: &[String]) -> Self {
-        let mut registry = Self { parsers: HashMap::new() };
+        let mut registry = Self {
+            parsers: HashMap::new(),
+        };
         for lang in languages {
             match lang.as_str() {
                 "python" => registry.register(Arc::new(python::PythonParser::new())),
@@ -75,7 +79,7 @@ impl ParserRegistry {
                 "go" => registry.register(Arc::new(go::GoParser::new())),
                 "bsl" => registry.register(Arc::new(bsl::BslParser::new())),
                 "html" => {} // ниже регистрируется безусловно
-                _ => {} // Неизвестный язык — пропускаем без ошибки
+                _ => {}      // Неизвестный язык — пропускаем без ошибки
             }
         }
         // HTML — универсальный ассет; всегда подгружаем (даже если не упомянут).
@@ -124,31 +128,65 @@ mod tests {
     #[test]
     fn test_parser_registry_new_all() {
         let reg = ParserRegistry::new_all();
-        assert!(reg.get_parser("py").is_some(), "Python парсер должен быть в реестре");
-        assert!(reg.get_parser("js").is_some(), "JavaScript парсер должен быть в реестре");
-        assert!(reg.get_parser("jsx").is_some(), "JSX парсер должен быть в реестре");
-        assert!(reg.get_parser("ts").is_some(), "TypeScript парсер должен быть в реестре");
-        assert!(reg.get_parser("tsx").is_some(), "TSX парсер должен быть в реестре");
-        assert!(reg.get_parser("java").is_some(), "Java парсер должен быть в реестре");
-        assert!(reg.get_parser("rs").is_some(), "Rust парсер должен быть в реестре");
-        assert!(reg.get_parser("unknown").is_none(), "Неизвестное расширение должно давать None");
+        assert!(
+            reg.get_parser("py").is_some(),
+            "Python парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("js").is_some(),
+            "JavaScript парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("jsx").is_some(),
+            "JSX парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("ts").is_some(),
+            "TypeScript парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("tsx").is_some(),
+            "TSX парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("java").is_some(),
+            "Java парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("rs").is_some(),
+            "Rust парсер должен быть в реестре"
+        );
+        assert!(
+            reg.get_parser("unknown").is_none(),
+            "Неизвестное расширение должно давать None"
+        );
     }
 
     #[test]
     fn test_parser_registry_from_languages() {
         let reg = ParserRegistry::from_languages(&["python".to_string()]);
-        assert!(reg.get_parser("py").is_some(), "Python должен быть при явном указании");
-        assert!(reg.get_parser("js").is_none(), "JS не должен быть — не указан");
-        assert!(reg.get_parser("ts").is_none(), "TS не должен быть — не указан");
-        assert!(reg.get_parser("java").is_none(), "Java не должен быть — не указан");
+        assert!(
+            reg.get_parser("py").is_some(),
+            "Python должен быть при явном указании"
+        );
+        assert!(
+            reg.get_parser("js").is_none(),
+            "JS не должен быть — не указан"
+        );
+        assert!(
+            reg.get_parser("ts").is_none(),
+            "TS не должен быть — не указан"
+        );
+        assert!(
+            reg.get_parser("java").is_none(),
+            "Java не должен быть — не указан"
+        );
     }
 
     #[test]
     fn test_parser_registry_from_languages_js_ts() {
-        let reg = ParserRegistry::from_languages(&[
-            "javascript".to_string(),
-            "typescript".to_string(),
-        ]);
+        let reg =
+            ParserRegistry::from_languages(&["javascript".to_string(), "typescript".to_string()]);
         assert!(reg.get_parser("js").is_some());
         assert!(reg.get_parser("jsx").is_some());
         assert!(reg.get_parser("ts").is_some());
@@ -159,7 +197,11 @@ mod tests {
     #[test]
     fn test_parser_registry_unknown_language() {
         // Неизвестный язык не должен вызывать панику
-        let reg = ParserRegistry::from_languages(&["rust".to_string(), "go".to_string(), "cobol".to_string()]);
+        let reg = ParserRegistry::from_languages(&[
+            "rust".to_string(),
+            "go".to_string(),
+            "cobol".to_string(),
+        ]);
         // Rust поддерживается — .rs должен найтись
         assert!(reg.get_parser("rs").is_some());
         // Go теперь поддерживается — .go должен найтись

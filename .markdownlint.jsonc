@@ -12,6 +12,7 @@
   "MD041": false,
   "MD046": false,
   "MD059": false,
+  "MD060": false,
   "line-length": false,
   "no-inline-html": false,
   "first-line-h1": false,
@@ -22,8 +23,10 @@
   "globs": [
     "**/*.md",
     "!node_modules/**",
+    "!.venv/**",
     "!**/target/**",
     "!tools/cc-1c-skills/**",
+    "!tools/code-index-mcp/**",
     "!generated/**",
     "!logs/**",
     "!dist/**",

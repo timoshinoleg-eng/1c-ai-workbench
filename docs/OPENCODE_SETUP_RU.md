@@ -42,10 +42,10 @@ CODE_INDEX_HOME=C:\1c-ai-workbench\generated\code-index-home
 opencode mcp add
 ```
 
-3. Название сервера: `1c-code-index`.
-4. Command: путь к `bsl-indexer.exe` выше.
-5. Args: `serve --path onec=C:\1c-ai-workbench\generated\index\source-mirror --transport stdio`.
-6. Env: `CODE_INDEX_HOME=C:\1c-ai-workbench\generated\code-index-home`.
+1. Название сервера: `1c-code-index`.
+2. Command: путь к `bsl-indexer.exe` выше.
+3. Args: `serve --path onec=C:\1c-ai-workbench\generated\index\source-mirror --transport stdio`.
+4. Env: `CODE_INDEX_HOME=C:\1c-ai-workbench\generated\code-index-home`.
 
 Проверьте:
 

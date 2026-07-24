@@ -114,7 +114,8 @@ impl SessionDedup {
         if elided == 0 {
             return (payload.to_string(), 0);
         }
-        self.elided_total.fetch_add(elided as u64, Ordering::Relaxed);
+        self.elided_total
+            .fetch_add(elided as u64, Ordering::Relaxed);
         match serde_json::to_string(&outer) {
             Ok(s) => (s, elided),
             Err(_) => (payload.to_string(), 0),
@@ -249,9 +250,10 @@ mod tests {
         assert_eq!(elided, 2); // A,B уже отданы
         let kept = rows_of(&out);
         assert_eq!(kept.len(), 1); // только C
-        // маркер на месте
+                                   // маркер на месте
         let outer: Value = serde_json::from_str(&out).unwrap();
-        let inner: Value = serde_json::from_str(outer["content"][0]["text"].as_str().unwrap()).unwrap();
+        let inner: Value =
+            serde_json::from_str(outer["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(inner["result"]["rows_elided_already_delivered"], json!(2));
     }
 

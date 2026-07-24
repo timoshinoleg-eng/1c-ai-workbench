@@ -18,9 +18,7 @@ use serde::Deserialize;
 use tokio::sync::oneshot;
 
 use super::commands::{CommandSender, DaemonCommand};
-use super::ipc::{
-    HealthResponse, PathStatus, PathStatusResponse, ReloadResponse, StopResponse,
-};
+use super::ipc::{HealthResponse, PathStatus, PathStatusResponse, ReloadResponse, StopResponse};
 use super::state::DaemonState;
 
 /// Разделяемое состояние, передаваемое в handler'ы axum.
