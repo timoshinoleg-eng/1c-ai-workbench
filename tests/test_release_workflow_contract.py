@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import re
 from pathlib import Path
 
 
@@ -53,3 +54,13 @@ def test_publisher_uses_verified_artifact_without_rebuilding() -> None:
     )
     for command in forbidden_rebuild_commands:
         assert command not in publish
+
+
+def test_release_actions_are_pinned_to_full_commits() -> None:
+    action_reference = re.compile(r"^\s*-\s+uses:\s+(\S+)", re.MULTILINE)
+
+    for workflow in (CANDIDATE, PUBLISH):
+        for reference in action_reference.findall(workflow_text(workflow)):
+            assert re.search(r"@[0-9a-f]{40}$", reference), (
+                f"{workflow.name} contains an unpinned action: {reference}"
+            )

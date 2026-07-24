@@ -61,11 +61,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           components: clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           workspaces: tools/code-index-mcp
 
@@ -144,6 +144,8 @@ jobs:
             throw "Candidate build requires the protected Authenticode PFX secrets."
           }
           $pfxPath = Join-Path $env:RUNNER_TEMP '1c-ai-workbench-signing.pfx'
+          "SIGNING_PFX_PATH=$pfxPath" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           [System.IO.File]::WriteAllBytes(
             $pfxPath,
             [Convert]::FromBase64String($env:SIGNING_PFX_BASE64)
@@ -157,8 +159,6 @@ jobs:
             throw "Imported Authenticode certificate has no private key."
           }
           "SIGNING_THUMBPRINT=$($certificate.Thumbprint)" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "SIGNING_PFX_PATH=$pfxPath" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build signed offline installer
