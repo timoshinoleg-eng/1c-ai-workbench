@@ -1,14 +1,21 @@
 """
 server.py — Help Index MCP сервер для 1C Enterprise .hbk файлов.
 
-Инструменты:
-  - reindex_help(path: str, db_path?: str) — проиндексировать .hbk
+Режимы (HELP_INDEX_MODE, по умолчанию operator):
+  - operator — полный набор инструментов (обратная совместимость).
+  - readonly — только чтение: mutating-инструменты не регистрируются,
+    SQLite открывается через URI mode=ro (база не создаётся и не меняется).
+
+Инструменты чтения (доступны в обоих режимах):
   - search_help(query: str, limit?: int, locale?: str) — FTS5 поиск
   - smart_search_help(query: str, limit?: int, locale?: str) — prefix fallback поиск
   - get_help_topic(topic_id: int) — контент топика
   - get_help_tree(parent_id?: int) — иерархия TOC
   - help_stats() — статистика индекса
-  - list_search_terms() — популярные термины (будущее)
+  - list_search_terms() — популярные термины (FTS5 vocab)
+
+Mutating-инструменты (только operator):
+  - reindex_help(path: str, db_path?: str) — проиндексировать .hbk
   - export_help_browser(output_path?: str, limit?: int) — статический HTML-браузер
 """
 
@@ -45,6 +52,29 @@ def _default_hbk_dir() -> Path:
 DEFAULT_HBK_DIR = _default_hbk_dir()
 
 
+# ── Режим работы (operator / readonly) ─────────────────────────────────────
+
+# operator — полное поведение: индексация, экспорт, чтение (обратная совместимость).
+# readonly — только чтение: mutating-инструменты не регистрируются, SQLite открывается mode=ro.
+HELP_INDEX_MODE_ENV = "HELP_INDEX_MODE"
+VALID_HELP_INDEX_MODES = ("operator", "readonly")
+
+
+def resolve_help_index_mode(raw: str | None = None) -> str:
+    """Разрешить режим работы из аргумента или окружения.
+
+    Значение по умолчанию — ``operator`` (обратная совместимость). Неизвестное
+    значение — явная ошибка, чтобы опечатка не превратилась в тихий read-write.
+    """
+    candidate = raw if raw is not None else os.environ.get(HELP_INDEX_MODE_ENV, "operator")
+    mode = candidate.strip().lower()
+    if mode not in VALID_HELP_INDEX_MODES:
+        raise ValueError(
+            f"Invalid {HELP_INDEX_MODE_ENV}={candidate!r}; expected one of: " f"{', '.join(VALID_HELP_INDEX_MODES)}"
+        )
+    return mode
+
+
 # ── JSON helpers ───────────────────────────────────────────────────────────
 
 
@@ -62,18 +92,22 @@ def err(msg: str) -> str:
 _INDEXER = None
 
 
-def _get_indexer(db_path: str | None = None) -> HbkIndexer:  # noqa: F821
-    """Ленивый импорт + инициализация индексера."""
+def _get_indexer(db_path: str | None = None, *, readonly: bool = False) -> HbkIndexer:  # noqa: F821
+    """Ленивый импорт + инициализация индексера.
+
+    ``readonly=True`` открывает существующую базу через SQLite URI ``mode=ro``
+    и не создаёт файл; ``readonly=False`` сохраняет прежнее read-write поведение.
+    """
     from indexer import HbkIndexer, resolve_workbench_path
 
     global _INDEXER
-    if db_path is None and _INDEXER is not None:
+    if db_path is None and _INDEXER is not None and _INDEXER.readonly == readonly:
         return _INDEXER
     path = resolve_workbench_path(db_path or DEFAULT_DB, "db_path")
-    if _INDEXER is None or _INDEXER.db_path != path:
+    if _INDEXER is None or _INDEXER.db_path != path or _INDEXER.readonly != readonly:
         if _INDEXER:
             _INDEXER.close()
-        _INDEXER = HbkIndexer(path)
+        _INDEXER = HbkIndexer(path, readonly=readonly)
     return _INDEXER
 
 
@@ -86,71 +120,41 @@ except ImportError:
     FastMCP = None  # type: ignore
 
 
-def create_server() -> FastMCP:
-    """Создать и сконфигурировать MCP сервер."""
+def create_server(mode: str | None = None) -> FastMCP:
+    """Создать и сконфигурировать MCP сервер.
+
+    ``mode`` — ``operator`` (полный набор инструментов, по умолчанию) или
+    ``readonly`` (только чтение). При ``None`` режим берётся из переменной
+    окружения ``HELP_INDEX_MODE``.
+
+    В режиме ``readonly``:
+      - регистрируются только инструменты чтения (search_help, smart_search_help,
+        get_help_topic, get_help_tree, help_stats, list_search_terms);
+      - mutating-инструменты (reindex_help, export_help_browser) НЕ существуют
+        в списке инструментов MCP;
+      - SQLite открывается через URI ``mode=ro``: база не создаётся и не меняется.
+    """
     if FastMCP is None:
         raise ImportError("fastmcp not installed. Run: pip install fastmcp>=3.0.0")
 
-    mcp = FastMCP(
-        "1c-help-index",
-        instructions="Index and search 1C Enterprise .hbk help files. "
-        "Topics indexed from .hbk binary containers into SQLite FTS5 for full-text search.",
-    )
+    resolved_mode = resolve_help_index_mode(mode)
+    readonly = resolved_mode == "readonly"
 
-    # ── инструменты ────────────────────────────────────────────────────────
+    if readonly:
+        instructions = (
+            "Read-only search of 1C Enterprise .hbk help files indexed into SQLite FTS5. "
+            "Only search and topic retrieval tools are exposed; reindex and export are "
+            "disabled and the SQLite database is opened with mode=ro (never created or modified)."
+        )
+    else:
+        instructions = (
+            "Index and search 1C Enterprise .hbk help files. "
+            "Topics indexed from .hbk binary containers into SQLite FTS5 for full-text search."
+        )
 
-    @mcp.tool()
-    def reindex_help(path: str, db_path: str | None = None) -> str:
-        """
-        Проиндексировать .hbk файл(ы).
+    mcp = FastMCP("1c-help-index", instructions=instructions)
 
-        Args:
-            path: Путь к .hbk файлу или директории с .hbk файлами
-            db_path: (опционально) путь к SQLite БД индекса
-        """
-        from indexer import HbkIndexer, resolve_workbench_path
-
-        indexer = None
-        try:
-            target = Path(path).expanduser().resolve(strict=False)
-            if not target.exists():
-                return err(f"Path not found: {path}")
-
-            hbk_files: list[Path] = []
-            if target.is_file() and target.suffix.lower() == ".hbk":
-                hbk_files.append(target)
-            elif target.is_dir():
-                hbk_files.extend(target.glob("*.hbk"))
-                hbk_files.extend(target.glob("*.HBK"))
-            else:
-                return err(f"Not a .hbk file: {path}")
-
-            if not hbk_files:
-                return err(f"No .hbk files found in {path}")
-
-            hbk_files = sorted(set(hbk_files), key=lambda p: str(p).lower())
-            db = resolve_workbench_path(db_path or DEFAULT_DB, "db_path")
-            indexer = HbkIndexer(db)
-            results = []
-            for hbk in hbk_files:
-                try:
-                    count = indexer.index_hbk(hbk)
-                    results.append({"file": str(hbk), "topics": count})
-                except Exception as e:
-                    logger.error("Failed to index %s: %s", hbk, e)
-                    results.append({"file": str(hbk), "error": str(e)})
-
-            global _INDEXER
-            if _INDEXER is not None and _INDEXER is not indexer:
-                _INDEXER.close()
-            _INDEXER = indexer
-            indexer = None
-            return ok({"db_path": str(db), "indexed": len(hbk_files), "results": results})
-        except Exception as e:
-            return err(f"Reindex failed: {e}")
-        finally:
-            if indexer is not None:
-                indexer.close()
+    # ── инструменты чтения (регистрируются всегда) ─────────────────────────
 
     @mcp.tool()
     def search_help(query: str, limit: int = 20, locale: str | None = None) -> str:
@@ -163,7 +167,7 @@ def create_server() -> FastMCP:
             locale: Фильтр по локали ("ru", "en")
         """
         try:
-            results = _get_indexer().search(query, limit=limit, locale=locale)
+            results = _get_indexer(readonly=readonly).search(query, limit=limit, locale=locale)
             return ok(
                 {
                     "query": query,
@@ -185,7 +189,7 @@ def create_server() -> FastMCP:
             locale: Фильтр по локали ("ru", "en")
         """
         try:
-            results = _get_indexer().smart_search(query, limit=limit, locale=locale)
+            results = _get_indexer(readonly=readonly).smart_search(query, limit=limit, locale=locale)
             return ok(
                 {
                     "query": query,
@@ -205,7 +209,7 @@ def create_server() -> FastMCP:
             topic_id: ID топика из результатов поиска
         """
         try:
-            topic = _get_indexer().get_topic(topic_id)
+            topic = _get_indexer(readonly=readonly).get_topic(topic_id)
             if topic is None:
                 return err(f"Topic {topic_id} not found")
             return ok(topic)
@@ -221,7 +225,7 @@ def create_server() -> FastMCP:
             parent_id: ID родительского раздела (0 = корень)
         """
         try:
-            children = _get_indexer().get_tree(parent_id)
+            children = _get_indexer(readonly=readonly).get_tree(parent_id)
             return ok(
                 {
                     "parent_id": parent_id,
@@ -236,7 +240,7 @@ def create_server() -> FastMCP:
     def help_stats() -> str:
         """Статистика проиндексированных данных."""
         try:
-            return ok(_get_indexer().stats())
+            return ok(_get_indexer(readonly=readonly).stats())
         except Exception as e:
             return err(f"Stats failed: {e}")
 
@@ -248,29 +252,86 @@ def create_server() -> FastMCP:
         Note: the FTS5 vocab table is created idempotently during schema init.
         """
         try:
-            indexer = _get_indexer()
+            indexer = _get_indexer(readonly=readonly)
             cur = indexer.conn.cursor()
             rows = cur.execute("SELECT term, doc, cnt FROM tops ORDER BY cnt DESC LIMIT 100").fetchall()
             return ok({"terms": [{"term": r[0], "docs": r[1], "occurrences": r[2]} for r in rows]})
         except Exception as e:
             return err(f"List search terms failed: {e}")
 
-    @mcp.tool()
-    def export_help_browser(output_path: str | None = None, limit: int = 5000) -> str:
-        """
-        Экспортировать статический HTML-браузер справки.
+    # ── mutating-инструменты (только operator) ─────────────────────────────
 
-        Args:
-            output_path: Путь к HTML. По умолчанию generated/help-index/help-browser.html
-            limit: Максимум топиков в статическом списке
-        """
-        try:
-            from indexer import resolve_workbench_path
+    if not readonly:
 
-            target = resolve_workbench_path(output_path or DEFAULT_DB_DIR / "help-browser.html", "output_path")
-            return ok(_get_indexer().export_browser(target, limit=limit))
-        except Exception as e:
-            return err(f"Browser export failed: {e}")
+        @mcp.tool()
+        def reindex_help(path: str, db_path: str | None = None) -> str:
+            """
+            Проиндексировать .hbk файл(ы).
+
+            Args:
+                path: Путь к .hbk файлу или директории с .hbk файлами
+                db_path: (опционально) путь к SQLite БД индекса
+            """
+            from indexer import HbkIndexer, resolve_workbench_path
+
+            indexer = None
+            try:
+                target = Path(path).expanduser().resolve(strict=False)
+                if not target.exists():
+                    return err(f"Path not found: {path}")
+
+                hbk_files: list[Path] = []
+                if target.is_file() and target.suffix.lower() == ".hbk":
+                    hbk_files.append(target)
+                elif target.is_dir():
+                    hbk_files.extend(target.glob("*.hbk"))
+                    hbk_files.extend(target.glob("*.HBK"))
+                else:
+                    return err(f"Not a .hbk file: {path}")
+
+                if not hbk_files:
+                    return err(f"No .hbk files found in {path}")
+
+                hbk_files = sorted(set(hbk_files), key=lambda p: str(p).lower())
+                db = resolve_workbench_path(db_path or DEFAULT_DB, "db_path")
+                indexer = HbkIndexer(db)
+                results = []
+                for hbk in hbk_files:
+                    try:
+                        count = indexer.index_hbk(hbk)
+                        results.append({"file": str(hbk), "topics": count})
+                    except Exception as e:
+                        logger.error("Failed to index %s: %s", hbk, e)
+                        results.append({"file": str(hbk), "error": str(e)})
+
+                global _INDEXER
+                if _INDEXER is not None and _INDEXER is not indexer:
+                    _INDEXER.close()
+                _INDEXER = indexer
+                indexer = None
+                return ok({"db_path": str(db), "indexed": len(hbk_files), "results": results})
+            except Exception as e:
+                return err(f"Reindex failed: {e}")
+            finally:
+                if indexer is not None:
+                    indexer.close()
+
+        @mcp.tool()
+        def export_help_browser(output_path: str | None = None, limit: int = 5000) -> str:
+            """
+            Экспортировать статический HTML-браузер справки.
+
+            Args:
+                output_path: Путь к HTML. По умолчанию generated/help-index/help-browser.html
+                limit: Максимум топиков в статическом списке
+            """
+            try:
+                from indexer import resolve_workbench_path
+
+                target = resolve_workbench_path(output_path or DEFAULT_DB_DIR / "help-browser.html", "output_path")
+                return ok(_get_indexer(readonly=readonly).export_browser(target, limit=limit))
+            except Exception as e:
+                return err(f"Browser export failed: {e}")
 
     return mcp
 
@@ -288,8 +349,15 @@ def main():
         print("ERROR: fastmcp not installed. Run: pip install fastmcp>=3.0.0")
         sys.exit(1)
 
-    server = create_server()
-    logger.info("Starting 1c-help-index MCP server...")
+    # Неизвестный режим — явная ошибка запуска, а не тихий read-write.
+    try:
+        mode = resolve_help_index_mode()
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(2)
+
+    server = create_server(mode)
+    logger.info("Starting 1c-help-index MCP server (mode=%s)...", mode)
     server.run()
 
 

@@ -206,10 +206,25 @@ def _hbk_storage_key(hbk_path: Path) -> str:
 
 
 class HbkIndexer:
-    """Построитель FTS5 индекса из .hbk файла(ов)."""
+    """Построитель FTS5 индекса из .hbk файла(ов).
 
-    def __init__(self, db_path: str | Path):
+    В режиме ``readonly=True`` индекс открывается через SQLite URI ``mode=ro``:
+    база не создаётся, схема не инициализируется и не мигрирует, journal/WAL не
+    трогаются, а любая попытка записи завершается ошибкой SQLite. Отсутствие
+    файла базы — явная ошибка, а не повод его создать.
+    """
+
+    def __init__(self, db_path: str | Path, *, readonly: bool = False):
         self.db_path = resolve_workbench_path(db_path, "db_path")
+        self.readonly = readonly
+        if readonly:
+            if not self.db_path.is_file():
+                raise FileNotFoundError(
+                    "Help index database not found; read-only mode refuses to create it: " f"{self.db_path}"
+                )
+            # URI mode=ro: SQLite открывает базу строго на чтение и не создаёт файл.
+            self.conn = sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True)
+            return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.execute("PRAGMA journal_mode=WAL")
