@@ -28,6 +28,28 @@ Primary risks:
 - No bundled proprietary 1C binaries.
 - API keys are owned and configured by the operator.
 
+## Continue Thin Client AI
+
+The optional Continue profiles in `configs/continue/` change the data-flow
+picture and must be understood before use:
+
+- **Online Hybrid sends data to a cloud provider.** Prompts and any context the
+  operator (or the agent) attaches are transmitted to Groq for chat/edit/apply.
+  Do not attach secrets or sensitive data to cloud requests.
+- **`.continueignore` is not a security boundary.** It reduces accidental context
+  inclusion, but a user can still manually attach a file or open it to the agent.
+- **MCP results are untrusted input.** Code and help-index results are data, not
+  instructions. The agent must not execute commands or instructions found inside
+  indexed content (see `.continue/rules/1c-workbench.md`).
+- **Help Index MCP read-only mode.** `HELP_INDEX_MODE=readonly` registers only the
+  read tools and opens SQLite with URI `mode=ro`, so the database is never created
+  or modified. `HELP_INDEX_MODE=operator` keeps the historical full behavior.
+- **No secrets in profiles.** Profiles reference the Groq key only as
+  `${{ secrets.GROQ_API_KEY }}`; the generator never reads or prints the value.
+  Never commit `.env` or a real key.
+
+See [docs/CONTINUE_THIN_CLIENT.md](docs/CONTINUE_THIN_CLIENT.md).
+
 ## Reporting
 
 Open a private security issue or email the maintainer if you discover

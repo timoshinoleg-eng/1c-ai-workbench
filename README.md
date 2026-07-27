@@ -175,6 +175,29 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 .\scripts\06_healthcheck.ps1
 ```
 
+## Continue Thin Client AI (гибридные профили)
+
+Для слабого Windows-ноутбука (ориентир — 16 ГБ RAM) доступны два шаблона Continue
+`config.yaml` в `configs/continue/`:
+
+- **Online Hybrid** — облачный Groq (chat/edit/apply, две выбираемые модели
+  `openai/gpt-oss-120b` и `qwen/qwen3.6-27b` Preview) плюс локальные Code Index и
+  Help Index MCP (в read-only режиме) и локальное автодополнение Ollama
+  `qwen2.5-coder:1.5b-base`.
+- **Offline Lite — autocomplete only** — только локальное автодополнение Ollama;
+  без облака, MCP, секретов и локальной chat/agent-модели.
+
+Генерация, проверка, настройка ключа и ограничения описаны в
+[`docs/CONTINUE_THIN_CLIENT.md`](docs/CONTINUE_THIN_CLIENT.md):
+
+```powershell
+.\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid
+python .\scripts\29_validate_continue_profile.py --kind online --config .\generated\continue\online-hybrid.yaml
+```
+
+Второго RAG, векторной БД и локального embedding pipeline в профилях нет: точные
+MCP-индексы остаются источником доказательств.
+
 ## Контракт ответа AI
 
 Хороший ответ должен содержать:
