@@ -60,16 +60,45 @@ def assert_citation(repo: Path, citation: dict[str, Any]) -> dict[str, Any]:
     return {"path": relative.as_posix(), "line_start": start, "line_end": end}
 
 
+def symbol_payload(binary: Path, repo: Path, name: str) -> dict[str, Any]:
+    return json.loads(run(binary, "query", name, "--path", str(repo), "--language", "bsl", "--json"))
+
+
 def symbol_result(binary: Path, repo: Path, name: str) -> dict[str, Any]:
-    payload = json.loads(run(binary, "query", name, "--path", str(repo), "--language", "bsl", "--json"))
+    payload = symbol_payload(binary, repo, name)
     matches = [item for item in payload.get("functions", []) if item.get("name") == name]
     if len(matches) != 1:
         raise AssertionError(f"Expected one exact symbol {name!r}, got {len(matches)}")
     return matches[0]
 
 
+def assert_absence(payload: dict[str, Any], query: str) -> None:
+    """Fail if the index fabricates or substitutes an exact symbol for ``query``.
+
+    Thin Client retrieval must answer "не найдено" for an absent or merely similar
+    name instead of returning a near-miss as if it were an exact match.
+    """
+    exact = [item for item in payload.get("functions", []) if item.get("name") == query]
+    if exact:
+        raise AssertionError(
+            f"Expected no exact symbol for {query!r}, but the index returned {len(exact)} "
+            "match(es); a similar name must not substitute an absent symbol"
+        )
+
+
 def evaluate_case(binary: Path, repo: Path, case: dict[str, Any]) -> dict[str, Any]:
     kind = case["kind"]
+    if kind == "absence":
+        payload = symbol_payload(binary, repo, case["query"])
+        assert_absence(payload, case["query"])
+        return {
+            "id": case["id"],
+            "kind": kind,
+            "score": 1,
+            "citation": None,
+            "evidence": f"no exact symbol for query {case['query']!r}",
+            "verdict": "PASS",
+        }
     if kind in {"symbol", "body"}:
         match = symbol_result(binary, repo, case["query"])
         if match.get("name") != case["expected_symbol"]:
@@ -113,9 +142,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     rows = ["| Case | Kind | Score | Citation |", "|---|---|---:|---|"]
     for case in report["cases"]:
         citation = case["citation"]
-        rows.append(
-            f"| {case['id']} | {case['kind']} | {case['score']} | " f"`{citation['path']}:{citation['line_start']}` |"
-        )
+        if citation is None:
+            location = case.get("evidence", "absence")
+            rows.append(f"| {case['id']} | {case['kind']} | {case['score']} | {location} |")
+        else:
+            rows.append(
+                f"| {case['id']} | {case['kind']} | {case['score']} | " f"`{citation['path']}:{citation['line_start']}` |"
+            )
     return (
         "# PRISM-like 1C provider-free evaluation\n\n"
         f"Verdict: **{report['verdict']}**  \n"

@@ -52,6 +52,28 @@
         "line_end": 6,
         "must_contain": "golden-v1"
       }
+    },
+    {
+      "id": "thin-client-exact-retrieval",
+      "kind": "symbol",
+      "query": "ВыполнитьПроверку",
+      "expected_symbol": "ВыполнитьПроверку",
+      "citation": {
+        "path": "CommonModules/ПилотИндекса/Ext/Module.bsl",
+        "line_start": 6,
+        "line_end": 6,
+        "must_contain": "Процедура ВыполнитьПроверку"
+      }
+    },
+    {
+      "id": "thin-client-similar-name-trap",
+      "kind": "absence",
+      "query": "РассчитатьСумма"
+    },
+    {
+      "id": "thin-client-absent-symbol",
+      "kind": "absence",
+      "query": "НесуществующийМетод"
     }
   ]
 }
