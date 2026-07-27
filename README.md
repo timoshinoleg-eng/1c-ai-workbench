@@ -17,6 +17,24 @@ Production assets публикуются только после двухфаз�
 публикация без пересборки. Контракт процесса описан в
 [`docs/RELEASE_CONTRACT_V1.md`](docs/RELEASE_CONTRACT_V1.md).
 
+## Публичная beta (unsigned)
+
+Доступна публичная unsigned beta `v0.10.0-beta.1` для знакомства и сбора
+отзывов. Installer **не имеет** коммерческой Authenticode-подписи, поэтому
+Windows SmartScreen покажет «Неизвестный издатель». Перед запуском сверьте
+SHA-256 и GitHub Actions run, который собрал файл. Никогда не отключайте
+Windows Defender или SmartScreen.
+
+- Быстрый старт, проверка источника, privacy, удаление, FAQ и bug report:
+  [`docs/BETA_TESTING.md`](docs/BETA_TESTING.md)
+- Модель доверия и безопасности beta:
+  [`docs/BETA_SECURITY.md`](docs/BETA_SECURITY.md)
+- Шаблон анонса для форумов:
+  [`docs/FORUM_BETA_ANNOUNCEMENT.md`](docs/FORUM_BETA_ANNOUNCEMENT.md)
+
+Beta работает только с экспортированными выгрузками и демо-данными и не
+предназначена для production-баз без резервной копии.
+
 ## Текущий статус
 
 Workbench готов для локального read-only использования.

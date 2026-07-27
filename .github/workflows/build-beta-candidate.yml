@@ -1,0 +1,263 @@
+name: Build unsigned beta candidate
+
+# Separate beta contour. This workflow builds an UNSIGNED public beta installer
+# from a frozen main commit. It never imports a signing certificate, never calls
+# signtool, and never references the production signing secrets. The signed
+# production contour lives in build-candidate.yml and is intentionally untouched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Beta version without v prefix, must be a SemVer prerelease, for example 0.10.0-beta.1"
+        required: true
+        default: "0.10.0-beta.1"
+        type: string
+      commit_sha:
+        description: "Frozen 40-character commit SHA currently at origin/main"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_LOG_STYLE: never
+  BETA_VERSION: ${{ inputs.version }}
+  BETA_COMMIT: ${{ inputs.commit_sha }}
+  # Isolated beta application id. It is deliberately different from the
+  # production AppId so a beta install can never upgrade, downgrade, or
+  # overwrite a production installation.
+  BETA_APP_ID: "E5F6A7B8-1C2D-4E3F-8A9B-0C1D2E3F4A5B"
+
+jobs:
+  unsigned-beta-candidate:
+    name: Build and test unsigned Windows beta candidate
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify frozen main commit and beta version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BETA_VERSION -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(0|[1-9A-Za-z-][0-9A-Za-z-.]*)$') {
+            throw "Beta version must be a SemVer prerelease without a v prefix, for example 0.10.0-beta.1: $env:BETA_VERSION"
+          }
+          if ($env:BETA_COMMIT -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Beta commit must be a full 40-character SHA."
+          }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch origin/main." }
+          $head = (git rev-parse HEAD).Trim()
+          $main = (git rev-parse origin/main).Trim()
+          if ($env:GITHUB_REF -ne 'refs/heads/main' -or $env:GITHUB_SHA -ne $head) {
+            throw "Beta candidate workflow must be dispatched from the frozen main commit."
+          }
+          if ($head -ne $env:BETA_COMMIT) {
+            throw "Checked-out HEAD $head does not match requested commit $env:BETA_COMMIT."
+          }
+          if ($head -ne $main) {
+            throw "Beta commit $head is not the current frozen origin/main head $main."
+          }
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: tools/code-index-mcp
+
+      - name: Parse all PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @('START_HERE.ps1') +
+            (Get-ChildItem .\scripts -Filter '*.ps1' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $file).Path
+            $content = [System.IO.File]::ReadAllText($path)
+            if ($content.Contains([char]0xfffd)) { throw "Invalid replacement character: $path" }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path, [ref]$tokens, [ref]$errors
+            )
+            if ($errors) { throw "PowerShell parser failed for $path" }
+          }
+
+      - name: Run Python test suite (pytest)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --upgrade pip --disable-pip-version-check
+          pip install --disable-pip-version-check -r requirements.txt
+          python -m pytest -q
+
+      - name: Build, test and smoke-test release indexer
+        working-directory: tools/code-index-mcp
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test --all --no-fail-fast
+          if ($LASTEXITCODE -ne 0) { throw "Rust test suite failed." }
+          cargo build --release -p bsl-indexer --features enrichment
+          if ($LASTEXITCODE -ne 0) { throw "Release indexer build failed." }
+          $exe = 'target\release\bsl-indexer.exe'
+          if (-not (Test-Path $exe)) { throw "bsl-indexer.exe missing after build." }
+          & $exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "bsl-indexer.exe smoke failed: $LASTEXITCODE" }
+          python ..\..\scripts\25_validate_code_index_045.py `
+            --binary $exe `
+            --report 'target\release\code-index-045-contract.json'
+          if ($LASTEXITCODE -ne 0) { throw "Code-index 0.45 contract failed." }
+          python ..\..\scripts\26_run_prism_eval.py `
+            --binary $exe `
+            --json-report 'target\release\prism-1c-eval.json' `
+            --markdown-report 'target\release\prism-1c-eval.md'
+          if ($LASTEXITCODE -ne 0) { throw "Provider-free evaluation failed." }
+
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.3'
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' `
+            -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Inno Setup archive checksum mismatch: $actual"
+          }
+          # Supply-chain verification of the third-party compiler only. This does
+          # not sign the workbench installer; the beta artifact stays unsigned.
+          $signature = Get-AuthenticodeSignature $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup Authenticode verification failed: $($signature.Status)"
+          }
+          $process = Start-Process $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$installRoot`""
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "INNO_COMPILER=$installRoot\ISCC.exe" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare verified offline wheelhouse
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\23_prepare_offline_wheelhouse.ps1
+
+      - name: Build unsigned offline beta installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\19_build_windows_installer.ps1 `
+            -AppVersion $env:BETA_VERSION `
+            -InstallerAppId $env:BETA_APP_ID `
+            -OfflineWheelhouse '.\dist\offline-wheelhouse' `
+            -RequireOfflineWheelhouse `
+            -InnoCompiler $env:INNO_COMPILER
+
+      - name: Assert beta installer is unsigned
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = ".\dist\installer\1c-ai-workbench-setup-$env:BETA_VERSION.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Unsigned beta installer was not produced: $installer"
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -eq 'Valid') {
+            throw "Beta installer must be unsigned, but it carries a valid Authenticode signature."
+          }
+          Write-Host "[OK] Beta installer is unsigned (Authenticode status: $($signature.Status))."
+
+      - name: Exercise unsigned installer offline and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = ".\dist\installer\1c-ai-workbench-setup-$env:BETA_VERSION.exe"
+          .\scripts\24_test_windows_installer.ps1 -InstallerPath $installer
+
+      - name: Assemble immutable beta candidate artifact
+        id: candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $shortSha = $env:BETA_COMMIT.Substring(0, 12).ToLowerInvariant()
+          $artifactName = "beta-candidate-$env:BETA_VERSION-$shortSha"
+          $candidateDir = Join-Path $PWD 'dist\beta-candidate'
+          New-Item -ItemType Directory -Path $candidateDir -Force | Out-Null
+
+          $installerName = "1c-ai-workbench-setup-$env:BETA_VERSION.exe"
+          $sourceFiles = @(
+            '.\tools\code-index-mcp\target\release\bsl-indexer.exe',
+            '.\tools\code-index-mcp\target\release\code-index-045-contract.json',
+            '.\tools\code-index-mcp\target\release\prism-1c-eval.json',
+            '.\tools\code-index-mcp\target\release\prism-1c-eval.md',
+            ".\dist\installer\$installerName"
+          )
+          foreach ($source in $sourceFiles) {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Beta candidate file is missing: $source"
+            }
+            Copy-Item -LiteralPath $source -Destination $candidateDir
+          }
+
+          # Fail-closed honesty gate: the shipped beta installer must be unsigned.
+          $installerPath = Join-Path $candidateDir $installerName
+          $signature = Get-AuthenticodeSignature -LiteralPath $installerPath
+          if ($signature.Status -eq 'Valid') {
+            throw "Beta candidate must not carry a valid Authenticode signature."
+          }
+
+          $manifest = [ordered]@{
+            schema_version = 1
+            release_channel = 'beta'
+            repository = '${{ github.repository }}'
+            workflow = 'build-beta-candidate.yml'
+            run_id = '${{ github.run_id }}'
+            commit_sha = $env:BETA_COMMIT.ToLowerInvariant()
+            version = $env:BETA_VERSION
+            artifact_name = $artifactName
+            app_id = $env:BETA_APP_ID
+            signed = $false
+            authenticode_present = $false
+            authenticode_status = [string]$signature.Status
+            signing_note = 'Unsigned public beta. No Authenticode signature is applied. Windows SmartScreen will show Unknown publisher; verify the SHA-256 checksum and the GitHub Actions run before running it.'
+          }
+          $manifest |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $candidateDir 'beta-manifest.json') -Encoding utf8
+
+          $checksums = Get-ChildItem -LiteralPath $candidateDir -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$digest  $($_.Name)"
+            }
+          $checksums |
+            Set-Content -LiteralPath (Join-Path $candidateDir 'checksums.txt') -Encoding ascii
+
+          "artifact_name=$artifactName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload unsigned beta candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.candidate.outputs.artifact_name }}
+          path: dist/beta-candidate
+          if-no-files-found: error
+          retention-days: 14

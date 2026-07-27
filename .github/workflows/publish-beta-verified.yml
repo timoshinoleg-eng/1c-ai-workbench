@@ -1,0 +1,269 @@
+name: Publish unsigned beta release
+
+# Separate beta publication contour. It downloads the exact artifact produced by
+# build-beta-candidate.yml, re-verifies provenance, manifest, run id, commit SHA
+# and every SHA-256, and publishes a GitHub Release with the prerelease flag.
+# It never rebuilds, never signs, and never modifies the downloaded artifacts.
+# The signed production publication contour (publish-verified.yml) is untouched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: "Successful Build unsigned beta candidate workflow run ID"
+        required: true
+        type: string
+      tag:
+        description: "Immutable beta release tag, must be a SemVer prerelease, for example v0.10.0-beta.1"
+        required: true
+        type: string
+      verification_record:
+        description: "URL or repository reference containing the beta verification evidence"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-beta:
+    name: Verify provenance, tag frozen commit, and publish exact unsigned beta
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate beta publication inputs and candidate run
+        id: run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERIFICATION_RECORD: ${{ inputs.verification_record }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:CANDIDATE_RUN_ID -notmatch '^\d+$') {
+            throw "Candidate run ID must contain digits only."
+          }
+          if ($env:RELEASE_TAG -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(0|[1-9A-Za-z-][0-9A-Za-z-.]*)$') {
+            throw "Beta publication tag must be a SemVer prerelease and start with v, for example v0.10.0-beta.1."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:VERIFICATION_RECORD) -or
+              $env:VERIFICATION_RECORD.Length -lt 8) {
+            throw "A beta verification record reference is required."
+          }
+          if ($env:GITHUB_REF -ne 'refs/heads/main') {
+            throw "Beta publication workflow must be dispatched from main."
+          }
+
+          $workflow = gh api "repos/${{ github.repository }}/actions/workflows/build-beta-candidate.yml" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve build-beta-candidate workflow identity." }
+          $run = gh api "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to resolve candidate workflow run." }
+          if ([string]$run.workflow_id -ne [string]$workflow.id) {
+            throw "Run $env:CANDIDATE_RUN_ID was not produced by build-beta-candidate.yml."
+          }
+          if ($run.conclusion -ne 'success' -or $run.status -ne 'completed') {
+            throw "Candidate run must be completed successfully."
+          }
+          if ($run.head_repository.full_name -ne '${{ github.repository }}') {
+            throw "Candidate run belongs to an unexpected repository."
+          }
+          if ($run.head_branch -ne 'main') {
+            throw "Beta candidate workflow was not dispatched from main."
+          }
+
+          $artifacts = gh api `
+            "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID/artifacts?per_page=100" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to list candidate artifacts." }
+          $matches = @($artifacts.artifacts | Where-Object {
+              -not $_.expired -and $_.name -like 'beta-candidate-*'
+            })
+          if ($matches.Count -ne 1) {
+            throw "Candidate run must contain exactly one non-expired beta-candidate artifact."
+          }
+          "artifact_name=$($matches[0].name)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "head_sha=$($run.head_sha)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download beta candidate without rebuilding
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path '.\dist\verified-beta' -Force | Out-Null
+          gh run download '${{ inputs.candidate_run_id }}' `
+            --repo '${{ github.repository }}' `
+            --name '${{ steps.run.outputs.artifact_name }}' `
+            --dir '.\dist\verified-beta'
+          if ($LASTEXITCODE -ne 0) { throw "Unable to download the beta candidate artifact." }
+
+      - name: Verify beta manifest, checksums, unsigned state, and frozen commit
+        id: candidate
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Resolve-Path '.\dist\verified-beta'
+          $manifestPath = Join-Path $dir 'beta-manifest.json'
+          $checksumsPath = Join-Path $dir 'checksums.txt'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $checksumsPath -PathType Leaf)) {
+            throw "Beta manifest or checksum file is missing."
+          }
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $version = $env:RELEASE_TAG.Substring(1)
+          if ($manifest.schema_version -ne 1 -or
+              $manifest.release_channel -ne 'beta' -or
+              $manifest.repository -ne '${{ github.repository }}' -or
+              [string]$manifest.run_id -ne [string]$env:CANDIDATE_RUN_ID -or
+              $manifest.workflow -ne 'build-beta-candidate.yml' -or
+              $manifest.version -ne $version -or
+              $manifest.commit_sha -notmatch '^[0-9a-f]{40}$') {
+            throw "Beta manifest does not match the requested beta release."
+          }
+          if ($manifest.signed -ne $false -or $manifest.authenticode_present -ne $false) {
+            throw "Beta manifest must declare the artifact as unsigned."
+          }
+          if ($manifest.commit_sha -ne '${{ steps.run.outputs.head_sha }}') {
+            throw "Beta manifest commit does not match the workflow run head SHA."
+          }
+
+          $checksummedNames = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal
+          )
+          foreach ($line in Get-Content -LiteralPath $checksumsPath) {
+            if ($line -notmatch '^(?<hash>[0-9a-f]{64})  (?<name>[^\\/]+)$') {
+              throw "Invalid checksum line: $line"
+            }
+            $file = Join-Path $dir $Matches.name
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Checksummed beta file is missing: $($Matches.name)"
+            }
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $Matches.hash) {
+              throw "SHA-256 mismatch for $($Matches.name)."
+            }
+            $null = $checksummedNames.Add($Matches.name)
+          }
+
+          $required = @(
+            'bsl-indexer.exe',
+            'code-index-045-contract.json',
+            'prism-1c-eval.json',
+            'prism-1c-eval.md',
+            "1c-ai-workbench-setup-$version.exe"
+          )
+          foreach ($name in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $dir $name) -PathType Leaf)) {
+              throw "Required beta asset is missing: $name"
+            }
+            if (-not $checksummedNames.Contains($name)) {
+              throw "Required beta asset is not covered by checksums.txt: $name"
+            }
+          }
+          if (-not $checksummedNames.Contains('beta-manifest.json')) {
+            throw "Beta manifest is not covered by checksums.txt."
+          }
+
+          # Honest unsigned guarantee: the shipped beta installer must not be
+          # validly Authenticode-signed.
+          $installer = Join-Path $dir "1c-ai-workbench-setup-$version.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -eq 'Valid') {
+            throw "Beta release must be unsigned, but the installer carries a valid signature."
+          }
+
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch origin/main." }
+          git cat-file -e "$($manifest.commit_sha)^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Beta candidate commit is not available in the repository." }
+          git merge-base --is-ancestor $manifest.commit_sha origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Beta candidate commit is not an ancestor of current origin/main."
+          }
+
+          "commit_sha=$($manifest.commit_sha)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$version" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Create or validate immutable annotated beta tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Unable to fetch release tags." }
+          $existing = git tag --list $env:RELEASE_TAG
+          if ($existing) {
+            $tagCommit = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+            if ($tagCommit -ne $env:RELEASE_COMMIT) {
+              throw "Existing tag $env:RELEASE_TAG points to $tagCommit, not $env:RELEASE_COMMIT."
+            }
+          } else {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a $env:RELEASE_TAG $env:RELEASE_COMMIT `
+              -m "1C AI Workbench $env:RELEASE_TAG (unsigned beta)"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to create annotated beta tag." }
+            git push origin "refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to publish immutable beta tag." }
+          }
+
+      - name: Publish exact verified beta assets as prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERIFICATION_RECORD: ${{ inputs.verification_record }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_COMMIT: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release view $env:RELEASE_TAG --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release $env:RELEASE_TAG already exists; beta assets will not be overwritten."
+          }
+          $dir = Resolve-Path '.\dist\verified-beta'
+          $notes = Join-Path $env:RUNNER_TEMP 'beta-release-notes.md'
+          @"
+          Unsigned public beta produced without rebuilding the verified candidate.
+
+          - Commit: ``$env:RELEASE_COMMIT``
+          - Beta candidate workflow run: ``$env:CANDIDATE_RUN_ID``
+          - Beta verification record: $env:VERIFICATION_RECORD
+          - Integrity manifest: ``checksums.txt``
+
+          This beta has NO Authenticode signature. Windows SmartScreen will show
+          "Unknown publisher". Before running it, verify the SHA-256 checksums
+          and the GitHub Actions run that produced these exact files. Never
+          disable Windows Defender or SmartScreen. See docs/BETA_TESTING.md and
+          docs/BETA_SECURITY.md for the verification steps and limitations.
+          "@ | Set-Content -LiteralPath $notes -Encoding utf8
+
+          $assets = Get-ChildItem -LiteralPath $dir -File |
+            Sort-Object Name |
+            ForEach-Object { $_.FullName }
+          gh release create $env:RELEASE_TAG $assets `
+            --repo '${{ github.repository }}' `
+            --verify-tag `
+            --prerelease `
+            --title "1C AI Workbench $env:RELEASE_TAG (unsigned beta)" `
+            --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw "Beta GitHub Release publication failed." }
