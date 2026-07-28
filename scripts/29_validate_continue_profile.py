@@ -74,6 +74,10 @@ def _validate_local_ollama_endpoint(model: dict[str, Any], errors: list[str]) ->
     if not isinstance(value, str) or not value:
         errors.append(f"{label} must declare an explicit local apiBase")
         return
+    _assert_loopback_http(value, label, errors)
+
+
+def _assert_loopback_http(value: str, label: str, errors: list[str]) -> None:
     try:
         parsed = urlsplit(value)
         port = parsed.port
@@ -91,6 +95,56 @@ def _validate_local_ollama_endpoint(model: dict[str, Any], errors: list[str]) ->
         or parsed.fragment
     ):
         errors.append(f"{label} apiBase must be an explicit loopback HTTP endpoint")
+
+
+def _assert_https_remote(value: object, label: str, errors: list[str]) -> None:
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label} must declare an HTTPS apiBase")
+        return
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        errors.append(f"{label} apiBase must be a valid HTTPS URL")
+        return
+    if parsed.scheme != "https":
+        errors.append(f"{label} apiBase must use HTTPS, got scheme {parsed.scheme!r}")
+    if not parsed.hostname:
+        errors.append(f"{label} apiBase must include a host")
+    if parsed.username is not None or parsed.password is not None:
+        errors.append(f"{label} apiBase must not embed credentials")
+    if parsed.query:
+        errors.append(f"{label} apiBase must not contain a query string")
+    if parsed.fragment:
+        errors.append(f"{label} apiBase must not contain a fragment")
+
+
+SECRET_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Cloud host markers that must never appear in a fully-local (LocalAgent/Offline)
+# profile. A path-bearing https URL like https://api.openai.com/v1 reduces to the
+# host marker api.openai.com.
+CLOUD_HOST_MARKERS = (
+    "api.groq.com",
+    "api.openai.com",
+    "openrouter.ai",
+    "api.anthropic.com",
+    "api.mistral.ai",
+    "api.deepseek.com",
+    "generativelanguage.googleapis.com",
+    "api.z.ai",
+)
+
+
+def _references_any_secret(canonical: str) -> bool:
+    return "${{ secrets" in canonical or "secrets." in canonical
+
+
+def _mentions_cloud_host(canonical: str) -> str | None:
+    lowered = canonical.lower()
+    for marker in CLOUD_HOST_MARKERS:
+        if marker in lowered:
+            return marker
+    return None
 
 
 def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> None:
@@ -180,11 +234,16 @@ def _online_checks(data: dict[str, Any], errors: list[str], repo_root: Path) -> 
             errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
         _validate_local_ollama_endpoint(model, errors)
 
+    _shared_mcp_checks(data, errors, repo_root, profile_label="Online Hybrid")
+
+
+def _shared_mcp_checks(data: dict[str, Any], errors: list[str], repo_root: Path, profile_label: str) -> None:
+    """Exact Code MCP + readonly Help MCP contract shared by online/hosted/local."""
     servers = data.get("mcpServers") or []
     server_names = [str(s.get("name")) for s in servers if isinstance(s, dict)]
     required_servers = {"1c-code-index", "1c-help-index"}
     if len(servers) != 2 or len(server_names) != 2 or set(server_names) != required_servers:
-        errors.append(f"Online Hybrid MCP server names must be exactly {sorted(required_servers)} with no duplicates")
+        errors.append(f"{profile_label} MCP server names must be exactly {sorted(required_servers)} with no duplicates")
 
     by_name = {str(s.get("name")): s for s in servers if isinstance(s, dict)}
     code = by_name.get("1c-code-index")
@@ -219,6 +278,93 @@ def _online_checks(data: dict[str, Any], errors: list[str], repo_root: Path) -> 
             errors.append("1c-help-index env must set HELP_INDEX_MODE=readonly")
         if not _same_path(env.get("WORKBENCH_ROOT"), repo_root):
             errors.append(f"1c-help-index WORKBENCH_ROOT must be exactly {repo_root}")
+
+
+def _hosted_checks(data: dict[str, Any], canonical: str, errors: list[str], repo_root: Path) -> None:
+    """Provider-neutral hosted agent: one OpenAI-compatible HTTPS model + Ollama."""
+    models = data.get("models") or []
+    agent_models = [m for m in models if isinstance(m, dict) and str(m.get("provider")).lower() == "openai"]
+    if len(agent_models) != 1:
+        errors.append("Hosted Agent must define exactly one OpenAI-compatible (provider 'openai') agent model")
+    for model in agent_models:
+        label = f"hosted agent model {model.get('model')!r}"
+        roles = set(_model_roles(model))
+        if roles != {"chat", "edit", "apply"}:
+            errors.append(f"{label} roles must be exactly chat/edit/apply, got {sorted(roles)}")
+        capabilities = [str(c) for c in (model.get("capabilities") or [])]
+        if "tool_use" not in capabilities:
+            errors.append(f"{label} must declare the 'tool_use' capability for Agent-mode MCP access")
+        api_key = model.get("apiKey")
+        if not isinstance(api_key, str) or not SECRET_REFERENCE.match(api_key):
+            if isinstance(api_key, str) and _looks_like_real_secret(api_key):
+                errors.append(f"{label} apiKey looks like a real secret; use a ${{{{ secrets.* }}}} reference")
+            else:
+                errors.append(f"{label} apiKey must be a ${{{{ secrets.* }}}} reference, got {api_key!r}")
+        else:
+            inner = re.search(r"secrets\.([A-Za-z0-9_]+)", api_key)
+            if inner and not SECRET_NAME_PATTERN.match(inner.group(1)):
+                errors.append(f"{label} secret name must be UPPER_SNAKE_CASE, got {inner.group(1)!r}")
+        _assert_https_remote(model.get("apiBase"), label, errors)
+
+    ollama = [m for m in models if isinstance(m, dict) and m.get("provider") == "ollama"]
+    autocomplete = [m for m in ollama if str(m.get("model")) == OLLAMA_AUTOCOMPLETE_MODEL]
+    if len(models) != 2 or len(ollama) != 1 or len(autocomplete) != 1 or len(agent_models) != 1:
+        errors.append(
+            "Hosted Agent models must be exactly one OpenAI-compatible agent model and "
+            f"one Ollama {OLLAMA_AUTOCOMPLETE_MODEL!r} autocomplete model"
+        )
+    for model in autocomplete:
+        if set(_model_roles(model)) != {"autocomplete"}:
+            errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
+        _validate_local_ollama_endpoint(model, errors)
+
+    _shared_mcp_checks(data, errors, repo_root, profile_label="Hosted Agent")
+
+
+def _local_checks(data: dict[str, Any], canonical: str, errors: list[str], repo_root: Path) -> None:
+    """Provider-neutral local agent: one loopback tool-capable model + Ollama, no cloud."""
+    # A fully-local profile must never reference a secret, an apiKey or a cloud host.
+    if _references_any_secret(canonical):
+        errors.append("Local Agent must not reference any secret")
+    if "apikey" in canonical.lower():
+        errors.append("Local Agent must not contain any apiKey")
+    cloud = _mentions_cloud_host(canonical)
+    if cloud is not None:
+        errors.append(f"Local Agent must not contain a cloud API URL ({cloud})")
+
+    models = data.get("models") or []
+    # The local agent model is OpenAI-compatible (provider 'openai') on loopback.
+    agent_models = [
+        m
+        for m in models
+        if isinstance(m, dict) and str(m.get("provider")).lower() == "openai" and "autocomplete" not in _model_roles(m)
+    ]
+    ollama = [m for m in models if isinstance(m, dict) and m.get("provider") == "ollama"]
+    autocomplete = [m for m in ollama if str(m.get("model")) == OLLAMA_AUTOCOMPLETE_MODEL]
+    if len(agent_models) != 1:
+        errors.append("Local Agent must define exactly one local OpenAI-compatible (provider 'openai') agent model")
+    if len(models) != 2 or len(ollama) != 1 or len(autocomplete) != 1:
+        errors.append(
+            "Local Agent models must be exactly one local agent model and "
+            f"one Ollama {OLLAMA_AUTOCOMPLETE_MODEL!r} autocomplete model"
+        )
+    for model in agent_models:
+        label = f"local agent model {model.get('model')!r}"
+        roles = set(_model_roles(model))
+        if roles != {"chat", "edit", "apply"}:
+            errors.append(f"{label} roles must be exactly chat/edit/apply, got {sorted(roles)}")
+        capabilities = [str(c) for c in (model.get("capabilities") or [])]
+        if "tool_use" not in capabilities:
+            errors.append(f"{label} must declare the 'tool_use' capability for Agent-mode MCP access")
+        if "apiKey" in model:
+            errors.append(f"{label} must not declare an apiKey (local profile carries no secret)")
+        _assert_loopback_http(model.get("apiBase"), label, errors)
+    for model in autocomplete:
+        if set(_model_roles(model)) != {"autocomplete"}:
+            errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
+        _validate_local_ollama_endpoint(model, errors)
+
+    _shared_mcp_checks(data, errors, repo_root, profile_label="Local Agent")
 
 
 def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> None:
@@ -275,6 +421,10 @@ def validate_profile_text(raw: str, kind: str, repo_root: Path) -> list[str]:
     _common_checks(data, canonical, errors)
     if kind == "online":
         _online_checks(data, errors, repo_root)
+    elif kind == "hosted":
+        _hosted_checks(data, canonical, errors, repo_root)
+    elif kind == "local":
+        _local_checks(data, canonical, errors, repo_root)
     elif kind == "offline":
         _offline_checks(data, canonical, errors)
     else:
@@ -310,7 +460,12 @@ def parse_args() -> argparse.Namespace:
         "--stdin-base64",
         help="Decode rendered UTF-8 config.yaml from base64 (PowerShell 5.1-safe in-memory validation)",
     )
-    parser.add_argument("--kind", choices=("online", "offline"), required=True, help="Expected profile kind")
+    parser.add_argument(
+        "--kind",
+        choices=("online", "hosted", "local", "offline"),
+        required=True,
+        help="Expected profile kind",
+    )
     parser.add_argument("--repo-root", type=Path, default=root, help="Workbench root for rules/ignore checks")
     return parser.parse_args()
 

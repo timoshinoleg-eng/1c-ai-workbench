@@ -7,7 +7,12 @@
 Covers:
   A. the PowerShell generator (scripts/28_prepare_continue_profile.ps1);
   B. the generated Continue config.yaml structure and the static validator
-     (scripts/29_validate_continue_profile.py).
+     (scripts/29_validate_continue_profile.py) for the legacy Groq/Offline
+     profiles;
+  C. the provider-neutral HostedAgent/LocalAgent profiles: the
+     provider/model/secret matrix, malicious-endpoint rejection, literal-secret
+     rejection, local/cloud isolation, exact roles/tool_use and the shared
+     Code/Help MCP contract.
 
 No network, no real API key, no installed Continue/Ollama/Java and no real .hbk
 are required. The generator is exercised through subprocess exactly as an
@@ -545,3 +550,485 @@ def test_bsl_weak_laptop_example_is_valid_and_on_save() -> None:
     # traceLog is a log-file path string in the current schema; leaving it unset
     # disables request tracing (the legacy boolean form is no longer the type).
     assert "traceLog" not in data
+
+
+# ── C. Provider-neutral HostedAgent / LocalAgent ───────────────────────────
+
+
+HOSTED_SECRET = "ZAI_API_KEY"
+
+
+def _gen_hosted(
+    fake_repo: Path,
+    *,
+    name: str = "profile.yaml",
+    preset: str | None = None,
+    api_base: str | None = None,
+    model_id: str | None = None,
+    secret_name: str | None = None,
+    check_only: bool = False,
+    env_extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    args = ["-Profile", "HostedAgent", "-RepoRoot", str(fake_repo), "-OutputPath", str(_output(fake_repo, name))]
+    if preset:
+        args += ["-Preset", preset]
+    if api_base:
+        args += ["-ApiBase", api_base]
+    if model_id:
+        args += ["-ModelId", model_id]
+    if secret_name:
+        args += ["-SecretName", secret_name]
+    if check_only:
+        args += ["-CheckOnly"]
+    return _run_generator(args, env_extra=env_extra)
+
+
+def _gen_local(
+    fake_repo: Path,
+    *,
+    name: str = "profile.yaml",
+    model: str = "qwen2.5-coder:7b",
+    api_base: str | None = None,
+    check_only: bool = False,
+    env_extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
+    args = ["-Profile", "LocalAgent", "-RepoRoot", str(fake_repo), "-OutputPath", str(_output(fake_repo, name))]
+    args += ["-LocalAgentModel", model]
+    if api_base:
+        args += ["-LocalAgentApiBase", api_base]
+    if check_only:
+        args += ["-CheckOnly"]
+    return _run_generator(args, env_extra=env_extra)
+
+
+def _generated_hosted(
+    fake_repo: Path,
+    *,
+    preset: str | None = None,
+    api_base: str | None = None,
+    model_id: str | None = None,
+    secret_name: str | None = None,
+) -> Path:
+    result = _gen_hosted(
+        fake_repo,
+        name="h.yaml",
+        preset=preset,
+        api_base=api_base,
+        model_id=model_id,
+        secret_name=secret_name,
+    )
+    assert result.returncode == 0, result.stderr
+    out = _output(fake_repo, "h.yaml")
+    assert validator.validate_profile(out, "hosted", fake_repo) == []
+    return out
+
+
+def _generated_local(fake_repo: Path, *, model: str = "qwen2.5-coder:7b", api_base: str | None = None) -> Path:
+    result = _gen_local(fake_repo, name="l.yaml", model=model, api_base=api_base)
+    assert result.returncode == 0, result.stderr
+    out = _output(fake_repo, "l.yaml")
+    assert validator.validate_profile(out, "local", fake_repo) == []
+    return out
+
+
+# ── C1. Provider / model / secret matrix ───────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("preset", "api_base", "model_id", "secret_name"),
+    [
+        # Preset supplies everything.
+        ("zai", None, None, None),
+        ("openrouter", None, "anthropic/claude-3.5-sonnet", None),
+        ("groq-legacy", None, None, None),
+        # Fully generic, every field explicit.
+        (None, "https://api.openai.com/v1", "gpt-4o-mini", "OPENAI_API_KEY"),
+        (None, "https://api.z.ai/api/paas/v4", "glm-4.6", "ZAI_API_KEY"),
+        # Preset endpoint/secret, user-chosen model.
+        ("zai", None, "glm-4.5-air", None),
+        # Override secret name on a preset; openrouter has no default model so
+        # the user must supply one.
+        ("openrouter", None, "anthropic/claude-3.5-sonnet", "MY_OPENROUTER_KEY"),
+    ],
+)
+def test_hosted_matrix_generates_valid_profile(
+    fake_repo: Path, preset: str | None, api_base: str | None, model_id: str | None, secret_name: str | None
+) -> None:
+    out = _generated_hosted(fake_repo, preset=preset, api_base=api_base, model_id=model_id, secret_name=secret_name)
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = [m for m in data["models"] if m["provider"] == "openai"]
+    assert len(agent) == 1
+    assert set(agent[0]["roles"]) == {"chat", "edit", "apply"}
+    assert "tool_use" in agent[0]["capabilities"]
+    assert agent[0]["apiBase"].startswith("https://")
+    # Secret stays a reference, never a value.
+    assert validator.SECRET_REFERENCE.match(agent[0]["apiKey"])
+    # Exactly one Ollama autocomplete + the two MCP servers.
+    assert len(data["models"]) == 2
+    assert {s["name"] for s in data["mcpServers"]} == {"1c-code-index", "1c-help-index"}
+
+
+def test_hosted_zai_preset_uses_verified_endpoint_and_model(fake_repo: Path) -> None:
+    out = _generated_hosted(fake_repo, preset="zai")
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(m for m in data["models"] if m["provider"] == "openai")
+    assert agent["apiBase"] == "https://api.z.ai/api/paas/v4"
+    assert agent["model"] == "glm-4.6"
+    assert agent["apiKey"] == "${{ secrets.ZAI_API_KEY }}"
+
+
+def test_hosted_secret_name_is_uppercased_and_referenced(fake_repo: Path) -> None:
+    out = _generated_hosted(
+        fake_repo, api_base="https://api.openai.com/v1", model_id="gpt-4o-mini", secret_name="openai_api_key"
+    )
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(m for m in data["models"] if m["provider"] == "openai")
+    assert agent["apiKey"] == "${{ secrets.OPENAI_API_KEY }}"
+
+
+@pytest.mark.parametrize("model", ["qwen2.5-coder:7b", "llama3.1:8b", "qwen2.5-coder:32b"])
+def test_local_agent_matrix_generates_valid_profile(fake_repo: Path, model: str) -> None:
+    out = _generated_local(fake_repo, model=model)
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = [m for m in data["models"] if m["provider"] == "openai"]
+    assert len(agent) == 1
+    assert agent[0]["model"] == model
+    assert set(agent[0]["roles"]) == {"chat", "edit", "apply"}
+    assert "tool_use" in agent[0]["capabilities"]
+    assert "apiKey" not in agent[0]
+    assert agent[0]["apiBase"].startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
+    assert len(data["models"]) == 2
+    assert {s["name"] for s in data["mcpServers"]} == {"1c-code-index", "1c-help-index"}
+
+
+# ── C2. Malicious endpoint rejection ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad_base",
+    [
+        "http://api.z.ai/api/paas/v4",  # not HTTPS
+        "ftp://api.z.ai/v1",  # wrong scheme
+        "https://api.z.ai/api/paas/v4?leak=key",  # query string
+        "https://api.z.ai/api/paas/v4#frag",  # fragment
+        "https://user:pass@api.z.ai/api/paas/v4",  # embedded credentials
+        "api.z.ai",  # not an absolute URL
+    ],
+)
+def test_hosted_rejects_unsafe_remote_endpoint_without_writing(fake_repo: Path, bad_base: str) -> None:
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base=bad_base,
+        model_id="glm-4.6",
+        secret_name=HOSTED_SECRET,
+        check_only=True,
+    )
+    assert result.returncode != 0
+    assert not _output(fake_repo, "must-not-appear.yaml").exists()
+
+
+@pytest.mark.parametrize(
+    "bad_base",
+    [
+        "https://127.0.0.1:11434",  # HTTPS not allowed for local
+        "http://192.168.1.5:11434",  # non-loopback host
+        "http://127.0.0.1:11434/v1",  # path component
+        "http://user:pass@127.0.0.1:11434",  # credentials
+        "http://127.0.0.1:11434?x=1",  # query
+    ],
+)
+def test_local_rejects_non_loopback_endpoint_without_writing(fake_repo: Path, bad_base: str) -> None:
+    result = _gen_local(fake_repo, name="must-not-appear.yaml", api_base=bad_base, check_only=True)
+    assert result.returncode != 0
+    assert not _output(fake_repo, "must-not-appear.yaml").exists()
+
+
+# ── C3. Literal-secret rejection ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "literal",
+    ["gsk_FAKEKEY_0123456789abcdef", "sk-proj-abcdef0123456789", "x" * 32],
+)
+def test_hosted_rejects_literal_secret_value_as_secret_name(fake_repo: Path, literal: str) -> None:
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base="https://api.z.ai/api/paas/v4",
+        model_id="glm-4.6",
+        secret_name=literal,
+        check_only=True,
+    )
+    assert result.returncode != 0
+    assert literal not in (result.stdout + result.stderr)
+    assert not _output(fake_repo, "must-not-appear.yaml").exists()
+
+
+def test_hosted_rejects_literal_secret_as_model_id(fake_repo: Path) -> None:
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base="https://api.z.ai/api/paas/v4",
+        model_id="gsk_FAKEKEY_0123456789abcdef",
+        secret_name=HOSTED_SECRET,
+        check_only=True,
+    )
+    assert result.returncode != 0
+
+
+def test_hosted_rejects_literal_secret_as_apibase(fake_repo: Path) -> None:
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base="gsk_FAKEKEY_0123456789abcdef",
+        model_id="glm-4.6",
+        secret_name=HOSTED_SECRET,
+        check_only=True,
+    )
+    assert result.returncode != 0
+
+
+# ── C4. Local/cloud isolation ──────────────────────────────────────────────
+
+
+def test_local_profile_has_no_cloud_secret_or_marker(fake_repo: Path) -> None:
+    out = _generated_local(fake_repo)
+    text = out.read_text(encoding="utf-8")
+    assert "apiKey" not in text.lower()
+    assert "${{{ secrets" not in text
+    assert "secrets." not in text
+    for marker in validator.CLOUD_HOST_MARKERS:
+        assert marker not in text.lower()
+
+
+def test_hosted_remote_secret_value_never_embedded(fake_repo: Path) -> None:
+    secret_value = "gsk_SECRETVALUE_NEVER_EMBED_0123"
+    out = _generated_hosted(
+        fake_repo,
+        api_base="https://api.z.ai/api/paas/v4",
+        model_id="glm-4.6",
+        secret_name=HOSTED_SECRET,
+    )
+    assert secret_value not in out.read_text(encoding="utf-8")
+
+
+def test_hosted_require_runtime_ready_does_not_print_secret_value(fake_repo: Path) -> None:
+    # The readiness gate cannot pass (no indexer/venv/help-db) but must never
+    # echo a configured secret VALUE, only its presence in dotenv sources.
+    secret_file = fake_repo / ".continue" / ".env"
+    secret_file.write_text("ZAI_API_KEY=gsk_SECRETVALUE_NEVER_PRINT_0123\n", encoding="utf-8")
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base="https://api.z.ai/api/paas/v4",
+        model_id="glm-4.6",
+        secret_name=HOSTED_SECRET,
+        env_extra={"USERPROFILE": str(fake_repo.parent / "isolated-user-profile")},
+    )
+    # Append -RequireRuntimeReady via a direct call (helper has no flag for it).
+    full = _run_generator(
+        [
+            "-Profile",
+            "HostedAgent",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(_output(fake_repo, "must-not-appear.yaml")),
+            "-ApiBase",
+            "https://api.z.ai/api/paas/v4",
+            "-ModelId",
+            "glm-4.6",
+            "-SecretName",
+            HOSTED_SECRET,
+            "-RequireRuntimeReady",
+        ],
+        env_extra={"USERPROFILE": str(fake_repo.parent / "isolated-user-profile")},
+    )
+    assert full.returncode != 0
+    assert "gsk_SECRETVALUE_NEVER_PRINT_0123" not in full.stdout
+    assert "gsk_SECRETVALUE_NEVER_PRINT_0123" not in full.stderr
+    assert "configured (workspace .continue/.env)" in full.stdout
+    _ = result  # generated-only run also referenced for coverage
+
+
+# ── C5. Exact roles / tool_use and Code/Help MCP contract ──────────────────
+
+
+def test_hosted_roles_and_capabilities_exact(fake_repo: Path) -> None:
+    out = _generated_hosted(fake_repo, preset="zai")
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(m for m in data["models"] if m["provider"] == "openai")
+    assert set(agent["roles"]) == {"chat", "edit", "apply"}
+    assert agent["capabilities"] == ["tool_use"]
+    auto = next(m for m in data["models"] if m["provider"] == "ollama")
+    assert set(auto["roles"]) == {"autocomplete"}
+
+
+def test_hosted_and_local_share_code_help_mcp_contract(fake_repo: Path) -> None:
+    for out, _kind in (
+        (_generated_hosted(fake_repo, preset="zai"), "hosted"),
+        (_generated_local(fake_repo), "local"),
+    ):
+        data = yaml.load(out.read_text(encoding="utf-8"), Loader=yaml.SafeLoader)
+        servers = {s["name"]: s for s in data["mcpServers"]}
+        assert set(servers) == {"1c-code-index", "1c-help-index"}
+        assert servers["1c-help-index"]["env"]["HELP_INDEX_MODE"] == "readonly"
+        assert servers["1c-code-index"]["args"][0] == "serve"
+        assert servers["1c-code-index"]["args"][3:5] == ["--transport", "stdio"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "mutator", "needle"),
+    [
+        (
+            "hosted",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").pop("roles"),
+            "roles must be exactly",
+        ),
+        ("hosted", lambda d: next(m for m in d["models"] if m["provider"] == "openai")["roles"].append("embed"), "embed"),
+        ("hosted", lambda d: next(m for m in d["models"] if m["provider"] == "openai")["capabilities"].clear(), "tool_use"),
+        (
+            "hosted",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").update(
+                {"apiKey": "gsk_realvalue1234567890"}
+            ),
+            "secret",
+        ),
+        (
+            "hosted",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").update({"apiBase": "http://api.z.ai/v1"}),
+            "HTTPS",
+        ),
+        (
+            "hosted",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").update(
+                {"apiBase": "https://api.z.ai/v1?x=1"}
+            ),
+            "query string",
+        ),
+        (
+            "hosted",
+            lambda d: d["models"].append({"name": "x", "provider": "openai", "model": "y", "roles": ["chat"]}),
+            "exactly one OpenAI-compatible",
+        ),
+        (
+            "local",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").update({"apiKey": "${{ secrets.X }}"}),
+            "apiKey",
+        ),
+        (
+            "local",
+            lambda d: next(m for m in d["models"] if m["provider"] == "openai").update(
+                {"apiBase": "https://api.openai.com/v1"}
+            ),
+            "loopback",
+        ),
+        ("local", lambda d: next(m for m in d["models"] if m["provider"] == "openai")["roles"].append("embed"), "embed"),
+    ],
+)
+def test_validator_rejects_broken_neutral_configs(fake_repo: Path, kind: str, mutator, needle: str) -> None:
+    if kind == "hosted":
+        source = _generated_hosted(fake_repo, preset="zai")
+    else:
+        source = _generated_local(fake_repo)
+    data = yaml.safe_load(source.read_text(encoding="utf-8"))
+    mutator(data)
+    bad = fake_repo / "bad.yaml"
+    bad.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    errors = validator.validate_profile(bad, kind, ROOT)
+    assert any(needle.lower() in e.lower() for e in errors), errors
+
+
+# ── C6. CheckOnly write-free for neutral profiles ──────────────────────────
+
+
+@pytest.mark.parametrize(
+    "runner",
+    ["hosted", "local"],
+)
+def test_neutral_check_only_writes_nothing(fake_repo: Path, runner: str) -> None:
+    out = _output(fake_repo, "must-not-appear.yaml")
+    before = {p.relative_to(fake_repo): p.read_bytes() for p in fake_repo.rglob("*") if p.is_file()}
+    if runner == "hosted":
+        result = _gen_hosted(fake_repo, name="must-not-appear.yaml", preset="zai", check_only=True)
+    else:
+        result = _gen_local(fake_repo, name="must-not-appear.yaml", check_only=True)
+    assert result.returncode == 0, result.stderr
+    assert "Semantic validation: PASS" in result.stdout
+    assert not out.exists()
+    after = {p.relative_to(fake_repo): p.read_bytes() for p in fake_repo.rglob("*") if p.is_file()}
+    assert after == before
+    assert not (fake_repo / "generated").exists()
+
+
+# ── C7. Runtime readiness + backward compatibility ─────────────────────────
+
+
+def test_hosted_require_runtime_ready_fails_without_runtime(fake_repo: Path) -> None:
+    result = _run_generator(
+        [
+            "-Profile",
+            "HostedAgent",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(_output(fake_repo, "h.yaml")),
+            "-Preset",
+            "zai",
+            "-RequireRuntimeReady",
+        ]
+    )
+    assert result.returncode != 0
+    assert not _output(fake_repo, "h.yaml").exists()
+    assert f"Continue secret {HOSTED_SECRET}" in result.stdout
+    assert "Code MCP handshake/tools-list" in result.stdout
+    assert "Help MCP readonly handshake/tools-list" in result.stdout
+
+
+def test_local_require_runtime_ready_fails_without_runtime(fake_repo: Path) -> None:
+    result = _run_generator(
+        [
+            "-Profile",
+            "LocalAgent",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(_output(fake_repo, "l.yaml")),
+            "-LocalAgentModel",
+            "qwen2.5-coder:7b",
+            "-RequireRuntimeReady",
+        ]
+    )
+    assert result.returncode != 0
+    assert not _output(fake_repo, "l.yaml").exists()
+    assert "Code MCP handshake/tools-list" in result.stdout
+    assert "Help MCP readonly handshake/tools-list" in result.stdout
+
+
+def test_neutral_profiles_are_deterministic(fake_repo: Path) -> None:
+    for tag, gen in (
+        ("hosted", lambda n: _gen_hosted(fake_repo, name=n, preset="zai")),
+        ("local", lambda n: _gen_local(fake_repo, name=n)),
+    ):
+        assert gen(f"{tag}-det-a.yaml").returncode == 0
+        assert gen(f"{tag}-det-b.yaml").returncode == 0
+        a = _output(fake_repo, f"{tag}-det-a.yaml")
+        b = _output(fake_repo, f"{tag}-det-b.yaml")
+        assert a.read_bytes() == b.read_bytes()
+
+
+def test_legacy_profiles_still_generate_and_validate(fake_repo: Path) -> None:
+    """Backward compatibility: the original Groq/Offline profiles are unchanged."""
+    out_online = _output(fake_repo, "online.yaml")
+    assert (
+        _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out_online)]).returncode
+        == 0
+    )
+    assert validator.validate_profile(out_online, "online", fake_repo) == []
+    out_offline = _output(fake_repo, "offline.yaml")
+    assert (
+        _run_generator(["-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(out_offline)]).returncode
+        == 0
+    )
+    assert validator.validate_profile(out_offline, "offline", fake_repo) == []

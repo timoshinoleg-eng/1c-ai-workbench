@@ -1,0 +1,60 @@
+# 1C AI Workbench — Local Agent (Continue config.yaml template, schema v1).
+#
+# Fully offline provider-neutral profile: "bring your own model".
+#
+# Architecture:
+#   - One local OpenAI-compatible (e.g. Ollama, llama-server, vLLM) model that
+#     supports tool calling for chat/edit/apply and Agent-mode reasoning. The
+#     endpoint must be loopback HTTP only (127.0.0.1 / localhost / ::1).
+#   - Local autocomplete only: a separate lightweight Ollama model.
+#   - Local exact retrieval: 1c-code-index MCP and 1c-help-index MCP (read-only).
+#   - No cloud provider, no cloud API URL, no API key/secret of any kind.
+#   - No embeddings, no LanceDB/vector store, no @Codebase.
+#
+# HTTP is allowed ONLY for a loopback endpoint. No secrets are referenced. The
+# local agent model must be tool-capable; a non-tool model cannot drive Agent
+# mode and is not accepted by this profile.
+name: "1C AI Workbench — Local Agent (provider-neutral, offline)"
+version: 1.0.0
+schema: v1
+models:
+  - name: "Local tool-capable agent (OpenAI-compatible)"
+    provider: openai
+    model: '{{LOCAL_AGENT_MODEL}}'
+    apiBase: '{{LOCAL_AGENT_API_BASE}}'
+    capabilities:
+      - tool_use
+    roles:
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      temperature: 0.2
+  - name: "Qwen 2.5 Coder 1.5B (Ollama — autocomplete only)"
+    provider: ollama
+    model: "qwen2.5-coder:1.5b-base"
+    apiBase: '{{OLLAMA_API_BASE}}'
+    roles:
+      - autocomplete
+    autocompleteOptions:
+      maxPromptTokens: 1024
+      debounceDelay: 300
+      onlyMyCode: true
+mcpServers:
+  - name: 1c-code-index
+    command: '{{CODE_INDEX_EXE}}'
+    args:
+      - serve
+      - --path
+      - 'onec={{SOURCE_MIRROR}}'
+      - --transport
+      - stdio
+    env:
+      CODE_INDEX_HOME: '{{CODE_INDEX_HOME}}'
+  - name: 1c-help-index
+    command: '{{PYTHON_EXE}}'
+    args:
+      - '{{HELP_SERVER_PY}}'
+    env:
+      HELP_INDEX_MODE: readonly
+      WORKBENCH_ROOT: '{{WORKBENCH_ROOT}}'

@@ -44,10 +44,22 @@ picture and must be understood before use:
 - **Help Index MCP read-only mode.** `HELP_INDEX_MODE=readonly` registers only the
   read tools and opens SQLite with URI `mode=ro`, so the database is never created
   or modified. `HELP_INDEX_MODE=operator` keeps the historical full behavior.
-- **No secrets in profiles.** Profiles reference the Groq key only as
-  `${{ secrets.GROQ_API_KEY }}`; the generator never prints or embeds the value.
-  Runtime readiness inspects supported dotenv files only for a non-empty assignment
-  and never passes the value to child probes. Never commit `.env` or a real key.
+- **No secrets in profiles.** Profiles reference a key only as
+  `${{ secrets.<NAME> }}` (the operator-named secret); the generator never prints or
+  embeds the value. A value that looks like a real key passed anywhere
+  (`-SecretName`, `-ModelId`, `-ApiBase`) is rejected. Runtime readiness inspects
+  supported dotenv files only for a non-empty assignment of that named secret and
+  never passes the value to child probes. Never commit `.env` or a real key.
+- **Provider-neutral remote endpoints (HostedAgent).** A hosted `apiBase` must be an
+  explicit HTTPS URL with a host and must not embed credentials, a query string or a
+  fragment. A non-HTTPS scheme, an absolute-but-schemeless value, or an embedded
+  credential/query/fragment is rejected before any profile is written. HTTP is never
+  accepted for a remote endpoint.
+- **Local/cloud isolation (LocalAgent, Offline Lite).** Local profiles accept HTTP
+  only for an explicit loopback endpoint (`127.0.0.1` / `localhost` / `::1`) with no
+  credentials, path, query or fragment. They never reference a secret, never carry an
+  `apiKey`, and must not contain a known cloud API host — a local profile cannot
+  silently become a network/cloud profile.
 - **Generated-profile write boundary.** Output is confined to
   `<RepoRoot>/generated/continue`; normalized absolute/traversal escapes and existing
   reparse-point components are rejected before `-Force` is considered.

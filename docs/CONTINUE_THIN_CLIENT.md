@@ -1,16 +1,21 @@
 # Continue Thin Client AI для 1C AI Workbench
 
-Гибридный профиль для слабого Windows-ноутбука (ориентир — 16 ГБ RAM).
-Облачная LLM рассуждает, ведёт чат и применяет правки; локально работают только
-IDE, существующие точные MCP-индексы и лёгкое автодополнение.
+Гибридные профили для слабого Windows-ноутбука (ориентир — 16 ГБ RAM).
+Облачная **или локальная** LLM рассуждает, ведёт чат и применяет правки; локально
+работают IDE, существующие точные MCP-индексы и лёгкое автодополнение.
+
+С v1 профили provider-neutral — «принеси свой ключ или свою модель» (BYOK/BYOM):
+подойдёт любой OpenAI-compatible провайдер. Groq-профиль `OnlineHybrid` сохранён
+как необязательный legacy preset.
 
 ## Архитектурный принцип
 
-- Облако (Groq) выполняет chat / edit / apply и рассуждение в Agent-режиме.
+- Agent-модель (облачная или локальная) выполняет chat / edit / apply и
+  рассуждение в Agent-режиме. Модель должна поддерживать tool calling
+  (capability `tool_use`) для вызова MCP.
 - Локально: точный Code Index MCP (`bsl-indexer`) и Help Index MCP (Синтаксис-помощник).
-- Локальное автодополнение: Ollama `qwen2.5-coder:1.5b-base` (только autocomplete).
+- Локальное автодополнение: отдельная лёгкая Ollama-модель `qwen2.5-coder:1.5b-base`.
 - Без второго RAG, без векторной БД, без локального embedding pipeline.
-- Без локальной chat/agent-модели.
 
 ## Профили
 
@@ -48,8 +53,84 @@ models:
 - нет Groq и любого облачного провайдера, нет облачных URL, нет API-ключей;
 - это не полноценный локальный AI-агент.
 
-Для работы с локальными MCP-индексами нужен Online Hybrid (с облачной моделью для
-рассуждения) либо отдельный MCP-клиент.
+Для работы с локальными MCP-индексами нужен HostedAgent, LocalAgent, Online Hybrid
+(с моделью для рассуждения) либо отдельный MCP-клиент.
+
+## Provider-neutral профили (BYOK / BYOM)
+
+Эти профили принимают любого OpenAI-compatible провайдера. Ключ моделируется только
+**именем** Continue-секрета (`${{ secrets.<NAME> }}`); значение ключа никогда не
+принимается параметром, не печатается и не встраивается.
+
+### HostedAgent (облачная модель оператора)
+
+```yaml
+models:
+  - provider: openai          # одна OpenAI-compatible HTTPS-модель оператора
+    model: <user model id>    # роли: chat, edit, apply; capabilities: tool_use
+    apiKey: ${{ secrets.<NAME> }}
+    apiBase: <https endpoint>
+  - Ollama qwen2.5-coder:1.5b-base  # роль: autocomplete (локально)
+mcpServers:
+  - 1c-code-index  # bsl-indexer serve
+  - 1c-help-index  # readonly
+```
+
+Модель получает роли `chat`, `edit`, `apply` и capability `tool_use`. apiBase обязан
+быть HTTPS без userinfo/query/fragment. `Preset` подставляет проверенный endpoint,
+имя секрета и (необязательно) модель:
+
+| Preset | apiBase | Имя секрета | Модель по умолчанию |
+| --- | --- | --- | --- |
+| `generic` | требуется `-ApiBase` | требуется `-SecretName` | требуется `-ModelId` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | требуется `-ModelId` |
+| `zai` | `https://api.z.ai/api/paas/v4` | `ZAI_API_KEY` | `glm-4.6` |
+| `groq-legacy` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | `openai/gpt-oss-120b` |
+
+Z.AI endpoint (`https://api.z.ai/api/paas/v4`) и модель `glm-4.6` проверены по
+официальной документации Z.AI перед включением preset.
+
+```powershell
+# Полностью из preset
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
+
+# Generic: свой endpoint, модель и имя секрета
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent `
+    -ApiBase https://api.openai.com/v1 -ModelId gpt-4o-mini -SecretName OPENAI_API_KEY
+```
+
+### LocalAgent (полностью офлайн, своя модель)
+
+```yaml
+models:
+  - provider: openai          # локальная tool-capable OpenAI-compatible модель
+    model: <local model id>   # роли: chat, edit, apply; capabilities: tool_use
+    apiBase: <loopback http>  # 127.0.0.1 / localhost / ::1, без path/query/fragment
+  - Ollama qwen2.5-coder:1.5b-base  # роль: autocomplete (локально)
+mcpServers:
+  - 1c-code-index
+  - 1c-help-index  # readonly
+```
+
+- HTTP разрешён только для loopback; облачные URL, секреты и `apiKey` запрещены.
+- Модель обязана поддерживать tool calling (`tool_use`) — без него Agent-режим
+  невозможен.
+- Endpoint локального агента по умолчанию совпадает с эффективным `OLLAMA_HOST`
+  автодополнения; переопределить можно через `-LocalAgentApiBase`.
+
+```powershell
+.\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b
+# свой локальный endpoint агента (должен быть loopback)
+.\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b `
+    -LocalAgentApiBase 127.0.0.1:8080
+```
+
+### Escape hatch: своя конфигурация Continue
+
+Продвинутый оператор может не использовать генератор и подключить собственный
+`~/.continue/config.yaml`. При этом остаются в силе правила безопасности
+(`.continue/rules/1c-workbench.md`), `.continueignore`, read-only Help MCP и
+ответственность за ключи. Генератор не пишет в пользовательский `~/.continue`.
 
 ## Почему без embeddings и LanceDB
 
@@ -252,7 +333,16 @@ Production-модель прошла.
 | --- | --- |
 | Генератор Online Hybrid создаёт валидный YAML без неразрешённых токенов | PASS (pytest) |
 | Генератор Offline Lite создаёт валидный YAML | PASS (pytest) |
-| Валидатор принимает оба профиля | PASS (pytest) |
+| Генератор HostedAgent создаёт валидный YAML (preset + generic) | PASS (pytest) |
+| Генератор LocalAgent создаёт валидный YAML | PASS (pytest) |
+| Provider/model/secret matrix (preset×model×secret) | PASS (pytest) |
+| Malicious endpoint rejection (http remote, creds/query/fragment, non-loopback) | PASS (pytest) |
+| Literal-secret rejection как `-SecretName`/`-ModelId`/`-ApiBase` | PASS (pytest) |
+| Local/cloud isolation (no apiKey, no secret, no cloud host) | PASS (pytest) |
+| Exact roles/tool_use и Code/Help MCP contract для HostedAgent/LocalAgent | PASS (pytest) |
+| CheckOnly без записи для всех профилей | PASS (pytest) |
+| Backward-compat: OnlineHybrid/OfflineLite неизменны | PASS (pytest) |
+| Валидатор принимает все четыре профиля | PASS (pytest) |
 | Help MCP readonly: mutating-тулы отсутствуют, SQLite mode=ro, hash/mtime неизменны | PASS (pytest) |
 | PRISM eval: точный символ, путь, строка, evidence token | PASS (CI + локально 7/7) |
 | PRISM: рядом существует `РассчитатьСумму`, но запрос `РассчитатьСумма` возвращает пустой retrieval | PASS (CI + локально 7/7) |
@@ -263,6 +353,10 @@ Production-модель прошла.
 | Continue открыл Online Hybrid и ответил через Groq | FAIL (2026-07-28: профиль загружен; запрос Groq получил HTTP 403 от текущей сети) |
 | Groq `openai/gpt-oss-120b` Production отвечает | FAIL (2026-07-28: HTTP 403 `Access denied`; ключ найден локально, значение не журналируется) |
 | Groq `qwen/qwen3.6-27b` Preview доступен как selectable evaluation model | NOT RUN (основной Groq-запрос заблокирован сетью) |
+| HostedAgent (preset zai) отвечает через проверенный Z.AI endpoint | NOT RUN (live acceptance — задача Codex) |
+| HostedAgent (generic OpenAI-compatible) отвечает на выбранном провайдере | NOT RUN (live acceptance — задача Codex) |
+| LocalAgent: локальная tool-capable модель отвечает и вызывает MCP | NOT RUN (live acceptance — задача Codex) |
+| HostedAgent/LocalAgent Continue Agent вызывает Code MCP и Help MCP | NOT RUN (live acceptance — задача Codex; stdio initialize + tools/list PASS) |
 | Continue Agent вызывает Code MCP и получает evidence | NOT RUN (stdio initialize + tools/list PASS; вызов из Agent не выполнен из-за Groq 403) |
 | Continue Agent вызывает readonly Help MCP и получает evidence | NOT RUN (stdio initialize + tools/list PASS; вызов из Agent не выполнен из-за Groq 403) |
 | Ollama autocomplete работает с `qwen2.5-coder:1.5b-base` | NOT RUN (модель и прямой `/api/generate` PASS; запрос из IDE в журнале Ollama не подтверждён) |
