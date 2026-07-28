@@ -5,7 +5,8 @@
 # Architecture:
 #   - One local OpenAI-compatible (e.g. Ollama, llama-server, vLLM) model that
 #     supports tool calling for chat/edit/apply and Agent-mode reasoning. The
-#     endpoint must be loopback HTTP only (127.0.0.1 / localhost / ::1).
+#     endpoint must be loopback HTTP only (127.0.0.1 / localhost / ::1) and
+#     expose the OpenAI-compatible API below /v1.
 #   - Local autocomplete only: a separate lightweight Ollama model.
 #   - Local exact retrieval: 1c-code-index MCP and 1c-help-index MCP (read-only).
 #   - No cloud provider, no cloud API URL, no API key/secret of any kind.

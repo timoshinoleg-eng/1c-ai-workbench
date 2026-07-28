@@ -55,7 +55,9 @@
 
 .PARAMETER LocalAgentApiBase
     LocalAgent only. Optional loopback HTTP endpoint for the local agent model.
-    Defaults to the same effective OLLAMA_HOST as the autocomplete model.
+    Must end in /v1 because Continue uses the OpenAI-compatible API. Defaults
+    to the effective OLLAMA_HOST authority plus /v1; autocomplete keeps using
+    Ollama's native root endpoint separately.
 
 .PARAMETER OutputPath
     Output file path confined to <RepoRoot>/generated/continue/. A relative value is
@@ -236,7 +238,25 @@ function Test-LooksLikeRealSecret {
     }
     $compact = $Value.Trim()
     if ($compact.Length -ge 24 -and $compact -match '^[A-Za-z0-9+/=_\-]{24,}$') { return $true }
+    if ($compact.Length -ge 24 -and $compact -match '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$') { return $true }
     return $false
+}
+
+function Assert-SafeModelId {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value,
+        [Parameter(Mandatory = $true)][string]$ParameterName
+    )
+    if (
+        [string]::IsNullOrWhiteSpace($Value) -or
+        $Value.Length -gt 200 -or
+        -not ($Value -cmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$')
+    ) {
+        Write-Failure -Message "$ParameterName must be a non-empty model identifier using only letters, digits, dot, underscore, colon, slash, plus or hyphen." -Code 5
+    }
+    if (Test-LooksLikeRealSecret -Value $Value) {
+        Write-Failure -Message "$ParameterName looks like credential material; pass a model identifier only." -Code 5
+    }
 }
 
 function Get-PresetDefaults {
@@ -279,28 +299,28 @@ function Assert-HttpsRemoteApiBase {
         Write-Failure -Message 'HostedAgent requires an HTTPS apiBase (-ApiBase or a preset).' -Code 5
     }
     if ($Value -notmatch '^[A-Za-z][A-Za-z0-9+.\-]*://') {
-        Write-Failure -Message "HostedAgent apiBase must be an absolute HTTPS URL: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase must be an absolute HTTPS URL.' -Code 5
     }
     try {
         $uri = [System.Uri]$Value
     }
     catch {
-        Write-Failure -Message "HostedAgent apiBase is not a valid URL: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase is not a valid URL.' -Code 5
     }
     if ($uri.Scheme -ne 'https') {
-        Write-Failure -Message "HostedAgent apiBase must use HTTPS (got $($uri.Scheme)): $Value" -Code 5
+        Write-Failure -Message "HostedAgent apiBase must use HTTPS (got $($uri.Scheme))." -Code 5
     }
     if ([string]::IsNullOrEmpty($uri.Host)) {
-        Write-Failure -Message "HostedAgent apiBase must include a host: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase must include a host.' -Code 5
     }
     if (-not [string]::IsNullOrEmpty($uri.UserInfo)) {
-        Write-Failure -Message "HostedAgent apiBase must not embed credentials: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase must not embed credentials.' -Code 5
     }
     if (-not [string]::IsNullOrEmpty($uri.Query)) {
-        Write-Failure -Message "HostedAgent apiBase must not contain a query string: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase must not contain a query string.' -Code 5
     }
     if (-not [string]::IsNullOrEmpty($uri.Fragment)) {
-        Write-Failure -Message "HostedAgent apiBase must not contain a fragment: $Value" -Code 5
+        Write-Failure -Message 'HostedAgent apiBase must not contain a fragment.' -Code 5
     }
     # A path component (e.g. /v1 or /api/paas/v4) is legitimate for an
     # OpenAI-compatible base URL; only userinfo/query/fragment are dangerous.
@@ -321,14 +341,15 @@ function Assert-LoopbackHttpApiBase {
         Write-Failure -Message "LocalAgent apiBase is not a valid URL: $Value" -Code 5
     }
     $localHosts = @('127.0.0.1', 'localhost', '::1')
+    $hostName = $uri.DnsSafeHost
     $hasUnsafeSuffix = -not [string]::IsNullOrEmpty($uri.UserInfo) -or
-        ($uri.AbsolutePath -ne '/') -or
+        ($uri.AbsolutePath -notin @('/v1', '/v1/')) -or
         -not [string]::IsNullOrEmpty($uri.Query) -or
         -not [string]::IsNullOrEmpty($uri.Fragment)
-    if ($uri.Scheme -ne 'http' -or $uri.Host -notin $localHosts -or $uri.Port -lt 1 -or $hasUnsafeSuffix) {
-        Write-Failure -Message 'LocalAgent apiBase must be an explicit loopback HTTP endpoint without credentials, path, query or fragment.' -Code 5
+    if ($uri.Scheme -ne 'http' -or $hostName -notin $localHosts -or $uri.Port -lt 1 -or $hasUnsafeSuffix) {
+        Write-Failure -Message 'LocalAgent apiBase must be an explicit loopback OpenAI-compatible endpoint ending in /v1, without credentials, query or fragment.' -Code 5
     }
-    return $uri.GetLeftPart([System.UriPartial]::Authority)
+    return $uri.GetLeftPart([System.UriPartial]::Authority) + '/v1'
 }
 
 function Resolve-HostedSettings {
@@ -347,17 +368,12 @@ function Resolve-HostedSettings {
     if (Test-LooksLikeRealSecret -Value $apiBase) {
         Write-Failure -Message '-ApiBase looks like a real credential; pass an HTTPS URL only.' -Code 5
     }
-    if (Test-LooksLikeRealSecret -Value $modelId) {
-        Write-Failure -Message '-ModelId looks like a real credential; pass a model id only.' -Code 5
-    }
     if (Test-LooksLikeRealSecret -Value $secretName) {
         Write-Failure -Message '-SecretName looks like a real key value; pass only the secret NAME (never the value).' -Code 5
     }
 
     Assert-HttpsRemoteApiBase -Value $apiBase
-    if ([string]::IsNullOrWhiteSpace($modelId)) {
-        Write-Failure -Message 'HostedAgent requires a model id (-ModelId or a preset default).' -Code 5
-    }
+    Assert-SafeModelId -Value $modelId -ParameterName '-ModelId'
     if ([string]::IsNullOrWhiteSpace($secretName)) {
         Write-Failure -Message 'HostedAgent requires a secret name (-SecretName or a preset default).' -Code 5
     }
@@ -365,7 +381,7 @@ function Resolve-HostedSettings {
     if (-not ($secretName -cmatch '^[A-Z][A-Z0-9_]*$')) {
         $upper = $secretName.ToUpperInvariant()
         if (-not ($upper -cmatch '^[A-Z][A-Z0-9_]*$')) {
-            Write-Failure -Message "Secret name must be UPPER_SNAKE_CASE letters/digits: $secretName" -Code 5
+            Write-Failure -Message 'Secret name must be UPPER_SNAKE_CASE letters/digits.' -Code 5
         }
         $secretName = $upper
     }
@@ -377,6 +393,20 @@ function Resolve-HostedSettings {
         SecretName = $secretName
         SecretRef = '${{ secrets.' + $secretName + ' }}'
         DisplayName = $displayName
+    }
+}
+
+function Resolve-LocalAgentSettings {
+    $agentBase = if (-not [string]::IsNullOrWhiteSpace($LocalAgentApiBase)) {
+        Assert-LoopbackHttpApiBase -Value $LocalAgentApiBase
+    }
+    else {
+        (Get-OllamaApiBase).TrimEnd('/') + '/v1'
+    }
+    Assert-SafeModelId -Value $LocalAgentModel -ParameterName '-LocalAgentModel'
+    return [pscustomobject]@{
+        ApiBase = $agentBase
+        ModelId = $LocalAgentModel
     }
 }
 
@@ -429,20 +459,9 @@ function Get-TokenMap {
         $map['HOSTED_DISPLAY_NAME'] = $settings.DisplayName
     }
     elseif ($Profile -eq 'LocalAgent') {
-        $agentBase = if (-not [string]::IsNullOrWhiteSpace($LocalAgentApiBase)) {
-            Assert-LoopbackHttpApiBase -Value $LocalAgentApiBase
-        }
-        else {
-            Get-OllamaApiBase
-        }
-        if ([string]::IsNullOrWhiteSpace($LocalAgentModel)) {
-            Write-Failure -Message 'LocalAgent requires a tool-capable local model (-LocalAgentModel).' -Code 5
-        }
-        if (Test-LooksLikeRealSecret -Value $LocalAgentModel) {
-            Write-Failure -Message '-LocalAgentModel looks like a real credential; pass a model id only.' -Code 5
-        }
-        $map['LOCAL_AGENT_API_BASE'] = $agentBase
-        $map['LOCAL_AGENT_MODEL'] = $LocalAgentModel
+        $settings = Resolve-LocalAgentSettings
+        $map['LOCAL_AGENT_API_BASE'] = $settings.ApiBase
+        $map['LOCAL_AGENT_MODEL'] = $settings.ModelId
     }
     elseif ($Profile -eq 'OnlineHybrid') {
         # Legacy Groq dual-model profile: no new tokens beyond the MCP paths.
@@ -794,6 +813,25 @@ function Test-LocalAgentRuntime {
     $results = @(Get-ContinueClientStatus)
     # No secret is referenced by the local profile; only local runtime matters.
     $results += Get-McpReadinessStatuses -Root $Root
+    $settings = Resolve-LocalAgentSettings
+    $modelsUri = $settings.ApiBase.TrimEnd('/') + '/models'
+    try {
+        $modelResponse = Invoke-RestMethod -Method Get -Uri $modelsUri -TimeoutSec 5 -ErrorAction Stop
+        $agentEndpointReady = $null -ne $modelResponse -and $null -ne $modelResponse.data
+    }
+    catch {
+        $modelResponse = $null
+        $agentEndpointReady = $false
+    }
+    $results += New-RuntimeStatus -Check "Local OpenAI-compatible endpoint ($($settings.ApiBase))" `
+        -Status ($(if ($agentEndpointReady) { 'reachable' } else { 'not reachable or /models unsupported' })) `
+        -Ready $agentEndpointReady
+    $agentModelPresent = $agentEndpointReady -and @(
+        $modelResponse.data | Where-Object { $_.id -eq $settings.ModelId }
+    ).Count -gt 0
+    $results += New-RuntimeStatus -Check "Local agent model $($settings.ModelId)" `
+        -Status ($(if ($agentModelPresent) { 'found' } else { 'not found' })) `
+        -Ready $agentModelPresent
     $results += Get-OllamaRuntimeStatus
     return $results
 }

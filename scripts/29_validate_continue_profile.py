@@ -50,7 +50,9 @@ def _looks_like_real_secret(value: str) -> bool:
     if any(lowered.startswith(prefix) for prefix in prefixes):
         return True
     compact = value.strip()
-    return len(compact) >= 24 and re.fullmatch(r"[A-Za-z0-9+/=_\-]{24,}", compact) is not None
+    if len(compact) >= 24 and re.fullmatch(r"[A-Za-z0-9+/=_\-]{24,}", compact) is not None:
+        return True
+    return len(compact) >= 24 and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", compact) is not None
 
 
 def _model_roles(model: dict[str, Any]) -> list[str]:
@@ -97,6 +99,26 @@ def _assert_loopback_http(value: str, label: str, errors: list[str]) -> None:
         errors.append(f"{label} apiBase must be an explicit loopback HTTP endpoint")
 
 
+def _assert_loopback_openai_base(value: str, label: str, errors: list[str]) -> None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except (TypeError, ValueError):
+        errors.append(f"{label} apiBase must be a valid loopback OpenAI-compatible URL")
+        return
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in LOOPBACK_HOSTS
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("/v1", "/v1/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        errors.append(f"{label} apiBase must be an explicit loopback HTTP endpoint ending in /v1")
+
+
 def _assert_https_remote(value: object, label: str, errors: list[str]) -> None:
     if not isinstance(value, str) or not value:
         errors.append(f"{label} must declare an HTTPS apiBase")
@@ -119,6 +141,7 @@ def _assert_https_remote(value: object, label: str, errors: list[str]) -> None:
 
 
 SECRET_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$")
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 # Cloud host markers that must never appear in a fully-local (LocalAgent/Offline)
 # profile. A path-bearing https URL like https://api.openai.com/v1 reduces to the
@@ -185,6 +208,11 @@ def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> N
         for required in ("name", "provider", "model"):
             if not isinstance(model.get(required), str) or not model[required].strip():
                 errors.append(f"{label}.{required} is required")
+        model_id = model.get("model")
+        if isinstance(model_id, str) and model_id and not MODEL_ID_PATTERN.fullmatch(model_id):
+            errors.append(f"{label}.model contains unsupported characters or exceeds 200 characters")
+        if isinstance(model_id, str) and _looks_like_real_secret(model_id):
+            errors.append(f"{label}.model looks like credential material; use a model identifier")
         roles = _model_roles(model)
         for role in roles:
             if role not in ALLOWED_ROLES:
@@ -201,7 +229,7 @@ def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> N
                 if _looks_like_real_secret(api_key):
                     errors.append(f"{label}.apiKey looks like a real secret; use a ${{{{ secrets.* }}}} reference")
                 else:
-                    errors.append(f"{label}.apiKey must be a ${{{{ secrets.* }}}} reference, got {api_key!r}")
+                    errors.append(f"{label}.apiKey must be a ${{{{ secrets.* }}}} reference")
 
 
 def _online_checks(data: dict[str, Any], errors: list[str], repo_root: Path) -> None:
@@ -287,7 +315,7 @@ def _hosted_checks(data: dict[str, Any], canonical: str, errors: list[str], repo
     if len(agent_models) != 1:
         errors.append("Hosted Agent must define exactly one OpenAI-compatible (provider 'openai') agent model")
     for model in agent_models:
-        label = f"hosted agent model {model.get('model')!r}"
+        label = "hosted agent model"
         roles = set(_model_roles(model))
         if roles != {"chat", "edit", "apply"}:
             errors.append(f"{label} roles must be exactly chat/edit/apply, got {sorted(roles)}")
@@ -299,11 +327,11 @@ def _hosted_checks(data: dict[str, Any], canonical: str, errors: list[str], repo
             if isinstance(api_key, str) and _looks_like_real_secret(api_key):
                 errors.append(f"{label} apiKey looks like a real secret; use a ${{{{ secrets.* }}}} reference")
             else:
-                errors.append(f"{label} apiKey must be a ${{{{ secrets.* }}}} reference, got {api_key!r}")
+                errors.append(f"{label} apiKey must be a ${{{{ secrets.* }}}} reference")
         else:
             inner = re.search(r"secrets\.([A-Za-z0-9_]+)", api_key)
             if inner and not SECRET_NAME_PATTERN.match(inner.group(1)):
-                errors.append(f"{label} secret name must be UPPER_SNAKE_CASE, got {inner.group(1)!r}")
+                errors.append(f"{label} secret name must be UPPER_SNAKE_CASE")
         _assert_https_remote(model.get("apiBase"), label, errors)
 
     ollama = [m for m in models if isinstance(m, dict) and m.get("provider") == "ollama"]
@@ -349,7 +377,7 @@ def _local_checks(data: dict[str, Any], canonical: str, errors: list[str], repo_
             f"one Ollama {OLLAMA_AUTOCOMPLETE_MODEL!r} autocomplete model"
         )
     for model in agent_models:
-        label = f"local agent model {model.get('model')!r}"
+        label = "local agent model"
         roles = set(_model_roles(model))
         if roles != {"chat", "edit", "apply"}:
             errors.append(f"{label} roles must be exactly chat/edit/apply, got {sorted(roles)}")
@@ -358,7 +386,7 @@ def _local_checks(data: dict[str, Any], canonical: str, errors: list[str], repo_
             errors.append(f"{label} must declare the 'tool_use' capability for Agent-mode MCP access")
         if "apiKey" in model:
             errors.append(f"{label} must not declare an apiKey (local profile carries no secret)")
-        _assert_loopback_http(model.get("apiBase"), label, errors)
+        _assert_loopback_openai_base(model.get("apiBase"), label, errors)
     for model in autocomplete:
         if set(_model_roles(model)) != {"autocomplete"}:
             errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
