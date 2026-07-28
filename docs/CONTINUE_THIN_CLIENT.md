@@ -30,6 +30,10 @@ mcpServers:
 (нужна для Agent-режима и вызова MCP). Ollama-модель получает только `autocomplete`.
 Ключ Groq хранится как секрет Continue: `${{ secrets.GROQ_API_KEY }}`.
 
+Оба шаблона используют Continue `schema: v1`: роли находятся внутри каждого
+`models[]`, MCP-серверы — в `mcpServers`, а Agent tool calling объявлен через
+`capabilities: [tool_use]`. Устаревшие плоские model-role поля не используются.
+
 ### Offline Lite — autocomplete only
 
 ```yaml
@@ -64,8 +68,22 @@ Help Index MCP — FTS5-поиск по справке. Для слабого н
 ## Генерация и проверка профилей
 
 Генератор подставляет абсолютные пути вместо шаблонов и пишет детерминированный
-UTF-8 (без BOM, LF) в `generated/continue/`. Он не принимает и не печатает API-ключ
-и не пишет в пользовательский `~/.continue`.
+UTF-8 (без BOM, LF) только в `<RepoRoot>/generated/continue/`. Относительный
+`-OutputPath` вычисляется от этого каталога; абсолютный путь допустим только внутри
+него. Нормализация пути и запрет существующих junction/symlink/reparse-компонентов
+выполняются до проверки `-Force` и повторно перед записью, поэтому `..`, абсолютный
+путь, reparse point или `-Force` не могут вывести запись за границу.
+
+Перед любой записью тот же статический валидатор получает отрендерованный YAML через
+stdin и проверяет его семантический контракт. Поэтому `-CheckOnly` выполняет реальный
+YAML parse/semantic validation, но не создаёт файл, каталог или временный профиль.
+Генератор не принимает, не печатает и не встраивает API-ключ и не пишет в
+пользовательский `~/.continue`.
+
+При успешном `-CheckOnly` exit code равен `0`, а stdout содержит краткое
+`Semantic validation: PASS` и целевой путь. При ошибке exit code ненулевой, детали
+валидатора идут в stderr, output-файл не создаётся. Поведение границы покрыто
+`tests/test_continue_profiles.py`, MCP handshake — `tests/test_mcp_stdio_probe.py`.
 
 ```powershell
 # Online Hybrid
@@ -80,11 +98,19 @@ UTF-8 (без BOM, LF) в `generated/continue/`. Он не принимает и
 # Перезапись существующего файла
 .\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid -Force
 
-# Строгая проверка готовности runtime (ненулевой exit, если чего-то нет)
+# Строгая проверка полного локального runtime (ненулевой exit, если чего-то нет)
 .\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid -RequireRuntimeReady
 ```
 
-Статический валидатор разбирает YAML и проверяет контракт профилей:
+`-RequireRuntimeReady` проверяет установленный Continue для VS Code, поддерживаемый
+Continue dotenv-источник Groq secret, release `bsl-indexer`, source mirror и
+`CODE_INDEX_HOME`, проектный Python, Help DB, реальный MCP
+`initialize`/`tools/list` для Code MCP и readonly Help MCP, а также Ollama service и
+точный тег `qwen2.5-coder:1.5b-base` через тот же локальный API endpoint, который
+записан в Continue profile. Для Offline Lite проверяются Continue, точный Ollama
+endpoint и модель.
+
+Статический валидатор можно также вызвать для записанного файла:
 
 ```powershell
 python .\scripts\29_validate_continue_profile.py --kind online --config .\generated\continue\online-hybrid.yaml
@@ -93,13 +119,22 @@ python .\scripts\29_validate_continue_profile.py --kind offline --config .\gener
 
 ## Настройка GROQ_API_KEY
 
-Ключ настраивается поддерживаемым механизмом секретов/переменных окружения Continue
-(см. документацию Continue по secrets). В профиле используется только ссылка
-`${{ secrets.GROQ_API_KEY }}`.
+В профиле используется только ссылка `${{ secrets.GROQ_API_KEY }}`. Для IDE Continue
+разрешает секреты в следующем порядке:
+
+1. `<workspace-root>/.env`;
+2. `<workspace-root>/.continue/.env`;
+3. `%USERPROFILE%/.continue/.env`.
+
+Process environment — четвёртый источник только для Continue CLI. VS Code/JetBrains
+extension не читает shell environment, поэтому один `$env:GROQ_API_KEY` не проходит
+IDE-oriented `-RequireRuntimeReady`. См. официальные
+[Continue secret resolution rules](https://docs.continue.dev/faqs#where-secrets-are-resolved-from).
 
 - Не коммитьте `.env` и любые файлы с реальным ключом.
 - Не вставляйте реальное значение ключа в YAML-профиль.
-- Генератор никогда не читает и не печатает значение ключа.
+- Readiness-проверка определяет только наличие непустой dotenv-записи; значение ключа
+  не печатается, не передаётся дочерним probe-процессам и не встраивается в YAML.
 
 ## Ollama-модель (вручную)
 
@@ -108,6 +143,21 @@ python .\scripts\29_validate_continue_profile.py --kind offline --config .\gener
 
 ```powershell
 ollama pull qwen2.5-coder:1.5b-base
+```
+
+Генератор читает эффективный `OLLAMA_HOST` (по умолчанию
+`127.0.0.1:11434`), нормализует его в `apiBase` и принимает только явный
+loopback HTTP endpoint: `127.0.0.1`, `localhost` или `::1`. Это важно для
+Windows Ollama app, которая может использовать локальный порт `11534`.
+Удалённый host, HTTPS, credentials, path, query или fragment отклоняются:
+Offline Lite не может незаметно превратиться в сетевой профиль.
+
+Для нестандартного локального порта задайте endpoint до генерации и подтвердите,
+что в сгенерированном YAML появился тот же `apiBase`:
+
+```powershell
+$env:OLLAMA_HOST = "127.0.0.1:11534"
+.\scripts\28_prepare_continue_profile.ps1 -Profile OfflineLite -CheckOnly -RequireRuntimeReady
 ```
 
 ## Установка Continue (вручную)
@@ -169,8 +219,12 @@ Online Hybrid подключает Help Index MCP именно в режиме `
 
 ## Доступность моделей
 
-- `qwen/qwen3.6-27b` является Preview-моделью. Доступность, rate limits и условия
-  free tier могут меняться.
+- `openai/gpt-oss-120b` указан Groq как Production model и является основным
+  production-oriented вариантом профиля.
+- `qwen/qwen3.6-27b` указан Groq как Preview model: только evaluation, может быть
+  отключён с коротким уведомлением и не является production default.
+- Актуальный статус перепроверяется по официальному
+  [Groq supported-model list](https://console.groq.com/docs/models) перед пилотом.
 - Профиль не обещает отсутствие KYC, банковской карты, VPN или гарантированную
   работу из конкретной страны.
 - Устаревающие Llama 3.1/3.3 не используются как основа профиля (Groq меняет условия
@@ -180,6 +234,13 @@ Online Hybrid подключает Help Index MCP именно в режиме `
 
 Статусы: `PASS` / `FAIL` / `NOT RUN`. Если Continue, ключ Groq или Ollama-модель
 отсутствуют, соответствующие проверки — `NOT RUN`, а не `PASS`.
+PR не переводится из Draft и не merge, пока любой обязательный live-пункт ниже имеет
+`NOT RUN`/`FAIL` или повторный CI нового head не завершён успешно. BSL Language Server
+в этой задаче — отдельный optional пример и не входит в merge gate X130.
+Обязательные live-пункты: Groq Production, Continue Agent с Code MCP и Help MCP,
+Ollama autocomplete в Online Hybrid, Offline Lite autocomplete и измерение RAM.
+Preview-модель остаётся evaluation-пунктом: её `NOT RUN` не блокирует merge, если
+Production-модель прошла.
 
 | Проверка | Статус |
 | --- | --- |
@@ -188,11 +249,39 @@ Online Hybrid подключает Help Index MCP именно в режиме `
 | Валидатор принимает оба профиля | PASS (pytest) |
 | Help MCP readonly: mutating-тулы отсутствуют, SQLite mode=ro, hash/mtime неизменны | PASS (pytest) |
 | PRISM eval: точный символ, путь, строка, evidence token | PASS (CI + локально 7/7) |
-| PRISM eval: ловушка похожего имени и отсутствующий символ (absence) | PASS (CI + локально 7/7) |
+| PRISM: рядом существует `РассчитатьСумму`, но запрос `РассчитатьСумма` возвращает пустой retrieval | PASS (CI + локально 7/7) |
+| PRISM: полностью отсутствующий `НесуществующийМетод` возвращает пустой retrieval | PASS (CI + локально 7/7) |
 | `.continue/rules/1c-workbench.md` и корневой `.continueignore` существуют | PASS (pytest) |
 | BSL example — валидный JSON, диагностика по onSave | PASS (pytest) |
-| Continue открыл Online Hybrid и ответил через Groq | NOT RUN (Continue не установлен) |
-| Groq-ключ настроен и Agent вызывает MCP | NOT RUN (ключ не задан) |
-| Ollama autocomplete работает с `qwen2.5-coder:1.5b-base` | NOT RUN (модель не загружена) |
+| Повторный CI на новом head | NOT RUN (до push) |
+| Continue открыл Online Hybrid и ответил через Groq | FAIL (2026-07-28: профиль загружен; запрос Groq получил HTTP 403 от текущей сети) |
+| Groq `openai/gpt-oss-120b` Production отвечает | FAIL (2026-07-28: HTTP 403 `Access denied`; ключ найден локально, значение не журналируется) |
+| Groq `qwen/qwen3.6-27b` Preview доступен как selectable evaluation model | NOT RUN (основной Groq-запрос заблокирован сетью) |
+| Continue Agent вызывает Code MCP и получает evidence | NOT RUN (stdio initialize + tools/list PASS; вызов из Agent не выполнен из-за Groq 403) |
+| Continue Agent вызывает readonly Help MCP и получает evidence | NOT RUN (stdio initialize + tools/list PASS; вызов из Agent не выполнен из-за Groq 403) |
+| Ollama autocomplete работает с `qwen2.5-coder:1.5b-base` | NOT RUN (модель и прямой `/api/generate` PASS; запрос из IDE в журнале Ollama не подтверждён) |
+| Offline Lite работает без cloud/MCP и даёт локальное autocomplete | NOT RUN (профиль и runtime readiness PASS; транспорт IDE → Ollama не подтверждён) |
 | BSL Language Server активирован и выдаёт диагностику по onSave | NOT RUN (Java/BSL LS отсутствуют) |
-| Измерение RAM под нагрузкой профиля | NOT RUN (`RAM NOT MEASURED`) |
+| Измерение RAM под локальной моделью | PASS (2026-07-28: 15.3 ГБ всего, 13.6 ГБ занято, 1.7 ГБ свободно; `llama-server` working set 1108.3 МБ, private 1222.0 МБ; VS Code working set 2574.6 МБ) |
+
+### Evidence и разбор live-ошибок
+
+Воспроизводимые локальные проверки:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\26_run_prism_eval.py
+.\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid -CheckOnly -RequireRuntimeReady
+.\scripts\28_prepare_continue_profile.ps1 -Profile OfflineLite -CheckOnly -RequireRuntimeReady
+```
+
+Для autocomplete одного успешного прямого `/api/generate` недостаточно: во время
+ввода в IDE должен появиться новый запрос в Ollama и применимая inline-подсказка.
+Для Code/Help MCP одного `initialize`/`tools/list` недостаточно: обязательный gate —
+вызов инструмента из Continue Agent с evidence в ответе.
+
+При Groq HTTP 403 сначала выполните безопасный triage без печати ключа: проверьте,
+что secret загружен из поддерживаемого Continue dotenv-файла; проверьте разрешение
+модели в Groq organization/project settings; повторите минимальный запрос из другой
+разрешённой сети. Не меняйте статус на `PASS`, пока запрос из Continue не ответил
+и Agent не вызвал оба MCP.

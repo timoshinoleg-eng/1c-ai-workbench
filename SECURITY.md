@@ -45,8 +45,16 @@ picture and must be understood before use:
   read tools and opens SQLite with URI `mode=ro`, so the database is never created
   or modified. `HELP_INDEX_MODE=operator` keeps the historical full behavior.
 - **No secrets in profiles.** Profiles reference the Groq key only as
-  `${{ secrets.GROQ_API_KEY }}`; the generator never reads or prints the value.
-  Never commit `.env` or a real key.
+  `${{ secrets.GROQ_API_KEY }}`; the generator never prints or embeds the value.
+  Runtime readiness inspects supported dotenv files only for a non-empty assignment
+  and never passes the value to child probes. Never commit `.env` or a real key.
+- **Generated-profile write boundary.** Output is confined to
+  `<RepoRoot>/generated/continue`; normalized absolute/traversal escapes and existing
+  reparse-point components are rejected before `-Force` is considered.
+- **Local Ollama boundary.** Generated profiles pin the effective `OLLAMA_HOST` as
+  `apiBase`, but accept only an explicit loopback HTTP endpoint. Runtime readiness
+  probes that exact URL, so a healthy CLI pointed at a different port cannot produce
+  a false-positive IDE readiness result.
 
 See [docs/CONTINUE_THIN_CLIENT.md](docs/CONTINUE_THIN_CLIENT.md).
 

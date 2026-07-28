@@ -195,6 +195,10 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 python .\scripts\29_validate_continue_profile.py --kind online --config .\generated\continue\online-hybrid.yaml
 ```
 
+Генератор пишет только в `generated\continue`, блокирует
+absolute/traversal/reparse escapes даже с `-Force`, а `-CheckOnly` выполняет
+semantic YAML validation через stdin без записи файлов.
+
 Второго RAG, векторной БД и локального embedding pipeline в профилях нет: точные
 MCP-индексы остаются источником доказательств.
 

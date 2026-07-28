@@ -16,7 +16,11 @@ All templates point at the local `bsl-indexer.exe` built from `tools\code-index-
   secrets.
 
 Path placeholders are replaced by `scripts\28_prepare_continue_profile.ps1`, which
-writes to `generated\continue\` and never touches the user's `~\.continue`. The Groq
-key stays a `${{ secrets.GROQ_API_KEY }}` reference. Validate a generated profile
-with `scripts\29_validate_continue_profile.py`. See
+writes only below `generated\continue\`, rejects absolute/traversal/reparse escapes
+even with `-Force`, and never touches the user's `~\.continue`. `-CheckOnly` pipes
+the rendered YAML through the semantic validator without creating a file. The Groq
+key stays a `${{ secrets.GROQ_API_KEY }}` reference. The effective local
+`OLLAMA_HOST` is pinned into Ollama `apiBase`; only loopback HTTP endpoints are
+accepted, and runtime readiness probes that exact endpoint. Validate a generated profile
+again with `scripts\29_validate_continue_profile.py`. See
 [`docs\CONTINUE_THIN_CLIENT.md`](..\docs\CONTINUE_THIN_CLIENT.md).

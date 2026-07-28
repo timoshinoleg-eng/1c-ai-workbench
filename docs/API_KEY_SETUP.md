@@ -51,9 +51,14 @@
 - Не вставляйте реальное значение ключа в `configs/continue/*.yaml` или в
   сгенерированный профиль.
 - Не коммитьте `.env` и любые файлы с реальным ключом.
+- Для IDE Continue ищет `GROQ_API_KEY` по порядку в workspace `.env`, workspace
+  `.continue/.env`, затем `%USERPROFILE%/.continue/.env`. Process environment
+  доступен только Continue CLI и сам по себе не удовлетворяет IDE-oriented
+  `-RequireRuntimeReady`.
 - Генератор `scripts/28_prepare_continue_profile.ps1` не принимает ключ как
-  параметр и никогда не читает и не печатает его значение (проверяется только факт
-  настройки для `-RequireRuntimeReady`).
+  параметр, не печатает и не встраивает его. `-RequireRuntimeReady` читает только
+  dotenv-строки, чтобы определить наличие непустой записи, и не передаёт значение
+  probe-процессам.
 
 Offline Lite ключей не использует вовсе. Подробнее —
 [CONTINUE_THIN_CLIENT.md](CONTINUE_THIN_CLIENT.md).
