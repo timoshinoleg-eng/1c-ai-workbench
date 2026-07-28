@@ -240,6 +240,7 @@ def test_generator_detects_workspace_continue_dotenv_without_printing_value(fake
     [
         'GROQ_API_KEY=""\n',
         "GROQ_API_KEY='   '\n",
+        'GROQ_API_KEY="" # disabled\n',
         f"GROQ_API_KEY={FAKE_SECRET}\nGROQ_API_KEY=''\n",
     ],
 )
@@ -502,6 +503,7 @@ def test_validator_accepts_shipped_templates_via_generation(fake_repo: Path) -> 
             "ollama",
         ),
         ("offline", lambda d: d["models"][0].update({"model": "definitely-not-qwen:latest"}), "model must be exactly"),
+        ("offline", lambda d: d["models"][0].pop("roles"), "roles must be exactly"),
         ("offline", lambda d: d["models"][0].update({"apiBase": "https://ollama.example.invalid"}), "loopback"),
     ],
 )

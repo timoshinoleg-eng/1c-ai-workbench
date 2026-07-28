@@ -310,12 +310,15 @@ function Test-DotEnvSecret {
         if ($match.Success) {
             $matched = $true
             $value = $match.Groups['value'].Value.Trim()
-            if (
-                $value.Length -ge 2 -and
-                (($value.StartsWith('"') -and $value.EndsWith('"')) -or
-                ($value.StartsWith("'") -and $value.EndsWith("'")))
-            ) {
-                $value = $value.Substring(1, $value.Length - 2).Trim()
+            $quoted = [regex]::Match($value, '^(?<quote>[''"])(?<body>.*?)\k<quote>(?:\s*#.*)?$')
+            if ($quoted.Success) {
+                $value = $quoted.Groups['body'].Value.Trim()
+            }
+            else {
+                # For unquoted dotenv values, a whitespace-delimited # starts
+                # an inline comment; a # inside the value remains literal.
+                $unquoted = [regex]::Match($value, '^(?<body>.*?)(?:\s+#.*)?$')
+                $value = $unquoted.Groups['body'].Value.Trim()
             }
             # Dotenv uses the last assignment for a duplicated key. Keep scanning
             # and report ready only when that effective value is non-empty.

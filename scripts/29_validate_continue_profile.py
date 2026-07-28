@@ -239,7 +239,6 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
     models = data.get("models") or []
     if len(models) != 1:
         errors.append("Offline Lite must define exactly one Ollama autocomplete model")
-    all_roles: set[str] = set()
     for model in models:
         if not isinstance(model, dict):
             continue
@@ -249,9 +248,9 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
         if model.get("model") != OLLAMA_AUTOCOMPLETE_MODEL:
             errors.append(f"Offline Lite model must be exactly {OLLAMA_AUTOCOMPLETE_MODEL!r}")
         _validate_local_ollama_endpoint(model, errors)
-        all_roles.update(_model_roles(model))
-    if all_roles and all_roles != {"autocomplete"}:
-        errors.append(f"Offline Lite roles must be exactly autocomplete, got {sorted(all_roles)}")
+        roles = set(_model_roles(model))
+        if roles != {"autocomplete"}:
+            errors.append(f"Offline Lite model roles must be exactly autocomplete, got {sorted(roles)}")
 
     name = str(data.get("name") or "")
     if "autocomplete only" not in name.lower():
