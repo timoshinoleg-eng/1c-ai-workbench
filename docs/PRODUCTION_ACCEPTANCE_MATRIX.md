@@ -23,8 +23,9 @@ and a priority tier (MUST / SHOULD / LATER).
 
 Status values: `PASS` / `FAIL` / `NOT RUN` / `WAIVED` (with justification).
 
-A production release requires every MUST criterion to be `PASS` on both
-clean Windows 10 x64 and clean Windows 11 x64.
+A production release requires every MUST criterion to be `PASS` on clean
+Windows 11 25H2 x64 and on the documented legacy target, Windows 10 22H2 x64
+with active Extended Security Updates (ESU).
 
 ---
 
@@ -38,7 +39,7 @@ workbench installation, and no cached artifacts.
 | CW-01 | Installer runs without UAC elevation prompt | Double-click signed `.exe`; observe no shield dialog | MUST | Screenshot + screen recording |
 | CW-02 | Installer completes silently with `/VERYSILENT /SUPPRESSMSGBOXES` | Run from cmd; exit code 0 | MUST | Console output |
 | CW-03 | Install location is `%LOCALAPPDATA%\1c-ai-workbench` | Check path after install | MUST | `dir` output |
-| CW-04 | No files written outside `%LOCALAPPDATA%` (except Start Menu shortcut) | Process Monitor trace during install | MUST | ProcMon `.pml` |
+| CW-04 | Writes are confined to `{app}`, Start Menu, optional Desktop shortcut, and documented HKCU uninstall/install metadata | Process Monitor trace during install | MUST | ProcMon `.pml` |
 | CW-05 | `bsl-indexer.exe` is present and reports `code-index 0.45.0` | `bsl-indexer.exe --version` | MUST | Console output |
 | CW-06 | Python lock file and offline wheelhouse are present | Check `requirements-production.lock` + `offline-wheelhouse/` | MUST | `dir` output |
 | CW-07 | `START_HERE.ps1` launches without error | Run in PowerShell 5.1 | MUST | Console output |
@@ -49,7 +50,7 @@ workbench installation, and no cached artifacts.
 | CW-12 | Authenticode signature is valid (`signtool verify /pa /v`) | Run signtool | MUST | Console output |
 | CW-13 | RFC 3161 timestamp is present and valid | `signtool verify /pa /v` timestamp section | MUST | Console output |
 | CW-14 | SmartScreen behavior is recorded (warning or pass) | Launch on clean VM with SmartScreen enabled | MUST | Screenshot + text |
-| CW-15 | No Cyrillic characters in default install path | Inspect `%LOCALAPPDATA%` path | MUST | Path string |
+| CW-15 | Install and first launch succeed under a Windows user whose profile path contains Cyrillic and spaces | Clean account `C:\Users\Имя с пробелом` | MUST | Console + path string |
 
 ---
 
@@ -59,8 +60,8 @@ workbench installation, and no cached artifacts.
 |----|-----------|--------------|------|----------|
 | EV-01 | CPython 3.11 x64 detected when in PATH | `01_check_env.ps1` | MUST | Console |
 | EV-02 | Wrong Python version (3.10, 3.12) rejected with E102 | Install 3.12, run check | MUST | Console with E102 |
-| EV-03 | Cyrillic path rejected with E103 | Install to `C:\Пользователь\` | MUST | Console with E103 |
-| EV-04 | Space in path rejected with E103 | Install to `C:\My Tools\` | MUST | Console with E103 |
+| EV-03 | Unicode path is accepted and preserved exactly | Run from `C:\Пользователь\1c-ai-workbench` | MUST | Console all green |
+| EV-04 | Space-containing path is accepted and quoted safely | Run from `C:\My Tools\1c-ai-workbench` | MUST | Console all green |
 | EV-05 | Read-only `logs/` rejected with E104 | `icacls logs /deny Users:W`, run check | MUST | Console with E104 |
 | EV-06 | Restricted Execution Policy detected with E105 | `Set-ExecutionPolicy Restricted`, run | MUST | Console with E105 |
 | EV-07 | Low disk space detected with E106 | Fill disk to <500 MB free, run | SHOULD | Console with E106 |
@@ -89,8 +90,8 @@ workbench installation, and no cached artifacts.
 | AM-01 | Cloud BYOK mode records provider in state file | Select mode A, check `onboarding-state.json` | MUST | JSON content |
 | AM-02 | Corporate mode records endpoint URL (not key) | Select mode B, check state | MUST | JSON content |
 | AM-03 | Corporate mode rejects non-HTTPS URL with E306 | Enter `http://ai.corp/v1` | MUST | Console with E306 |
-| AM-04 | Local mode records no provider, no endpoint | Select mode C, check state | MUST | JSON content |
-| AM-05 | Local mode warns about autocomplete-only limitation | Observe warning text | MUST | Console |
+| AM-04 | LocalAgent records only a loopback `/v1` endpoint and no secret/provider credential | Select LocalAgent, check state | MUST | JSON content |
+| AM-05 | Offline Lite warns about autocomplete-only limitation; LocalAgent advertises chat/edit/apply + MCP only after readiness passes | Exercise both local submodes | MUST | Console |
 | AM-06 | Mode change overwrites previous mode in state | Switch A→C, check state | MUST | JSON content |
 | AM-07 | Mode change does not delete existing `.env` | Switch modes, verify `.env` intact | MUST | File check |
 | AM-08 | State file never contains API key value | Grep state file for key patterns | MUST | Grep output (empty) |
@@ -101,7 +102,7 @@ workbench installation, and no cached artifacts.
 
 | ID | Criterion | Verification | Tier | Evidence |
 |----|-----------|--------------|------|----------|
-| KS-01 | Key presence validated without reading value | Check script logic: only line existence tested | MUST | Code review |
+| KS-01 | Key parser reads only the effective dotenv assignment long enough to classify missing/empty/non-empty and never returns, logs, or persists the value | Code review + canary test | MUST | Test output |
 | KS-02 | Missing key prints E301 with exact file path and variable name | Remove `.env`, run validation | MUST | Console with E301 |
 | KS-03 | Empty key value prints E302 | Create `.env` with `KEY=`, run | MUST | Console with E302 |
 | KS-04 | Key value never appears in console output | Run all onboarding steps, capture stdout+stderr, grep for key pattern | MUST | Grep output (empty) |
@@ -123,7 +124,7 @@ workbench installation, and no cached artifacts.
 | SI-02 | Missing path prints E401 | Point to nonexistent dir | MUST | Console with E401 |
 | SI-03 | Empty directory prints E403 | Point to empty dir | MUST | Console with E403 |
 | SI-04 | Directory without `Configuration.xml` prints E402 | Point to dir with random files | MUST | Console with E402 |
-| SI-05 | Junction/symlink in path prints E406 | Create junction, point to it | MUST | Console with E406 |
+| SI-05 | Root junction shows its resolved target and requires confirmation; nested link escaping that root fails with E406 | Test contained root junction and escaping nested link | MUST | Console + state |
 | SI-06 | Indexing creates `index.db` | Run `04_index_1c_dump.ps1 -Force` | MUST | File exists |
 | SI-07 | `bsl-indexer stats` returns non-zero counts | Run stats on fresh index | MUST | JSON output |
 | SI-08 | Incremental reindex preserves existing data | Modify one file, reindex without `-Force` | MUST | Stats delta |
@@ -180,7 +181,7 @@ workbench installation, and no cached artifacts.
 | BC-05 | Rejection does NOT modify any file | Check file hash before/after reject | MUST | Hash comparison |
 | BC-06 | Confirmation applies the change to the source mirror file | Accept, verify file content changed | MUST | File diff |
 | BC-07 | After apply, assistant suggests incremental reindex | Observe prompt | SHOULD | Console |
-| BC-08 | Original content is recoverable (git diff or Ctrl+Z) | Check `git diff` shows the change | MUST | Git output |
+| BC-08 | Original content is recoverable from Git or a pre-apply hash-locked backup | Apply to Git and non-Git fixtures, then restore | MUST | Hash + Git output |
 | BC-09 | No batch apply without per-file confirmation | Request multi-file change; observe per-file gate | MUST | Screen recording |
 | BC-10 | No write outside indexed source mirror | Attempt path traversal in change target | MUST | Error E701 |
 | BC-11 | State transitions to `CHANGE_PROPOSED` then `CHANGE_APPLIED` | Check state file transitions | MUST | JSON content |
@@ -206,15 +207,15 @@ workbench installation, and no cached artifacts.
 
 | ID | Criterion | Verification | Tier | Evidence |
 |----|-----------|--------------|------|----------|
-| PR-01 | No API key in any file under `logs/` | `Select-String -Path logs\* -Pattern "sk-\|api_key\|token\|password\|secret"` | MUST | Empty output |
+| PR-01 | A unique canary API-key value is absent from every file under `logs/` | Search recursively for the exact canary value | MUST | Empty output |
 | PR-02 | No API key in `generated/onboarding-state.json` | Inspect file | MUST | File content |
 | PR-03 | No API key in console output during full onboarding | Capture all stdout+stderr, grep | MUST | Empty grep |
-| PR-04 | No BSL source line >80 chars in logs | Grep logs for long code patterns | MUST | Empty output |
+| PR-04 | Routine logs contain no BSL source content | Seed unique BSL canary lines and search logs for exact canaries | MUST | Empty output |
 | PR-05 | Error messages contain paths and codes, not file contents | Review all E-codes in catalog | MUST | Catalog review |
 | PR-06 | MCP probe processes receive no secrets in args/env | Inspect probe script logic | MUST | Code review |
 | PR-07 | Redacted fields show `[REDACTED:<name>]` not raw value | Trigger a log line that would contain a secret | MUST | Log line |
 | PR-08 | `gitleaks` passes on the repository | `gitleaks detect` | MUST | Exit code 0 |
-| PR-09 | Zero telemetry / zero auto-update network calls | Wireshark during full onboarding (all modes) | MUST | Capture (zero outbound except AI queries in cloud mode) |
+| PR-09 | Workbench-owned processes make no telemetry/auto-update calls; local mode works with adapter disabled; VS Code/Continue/provider traffic is separately attributed | ProcMon/Wireshark with process attribution in all modes | MUST | Capture + process map |
 | PR-10 | Privacy checklist printed at onboarding completion | Observe final output | SHOULD | Console |
 
 ---
@@ -308,13 +309,13 @@ workbench installation, and no cached artifacts.
 | XC-01 | Full onboarding completes in <30 minutes on clean VM (excluding AI provider signup) | Time the run | SHOULD | Timing |
 | XC-02 | All PowerShell scripts pass PSScriptAnalyzer | `Invoke-ScriptAnalyzer` | MUST | Zero errors |
 | XC-03 | All Python scripts pass `ruff` and `mypy` | Run linters | MUST | Zero errors |
-| XC-04 | No new files committed to `configs/continue/` | `git diff --name-only` | MUST | Empty diff |
-| XC-05 | No changes to `scripts/28_*.ps1`, `scripts/29_*.py`, `scripts/30_*.py` | `git diff --name-only` | MUST | Empty diff |
-| XC-06 | No changes to `tests/test_continue_profiles.py` | `git diff --name-only` | MUST | Empty diff |
-| XC-07 | No changes to `.github/workflows/` | `git diff --name-only` | MUST | Empty diff |
+| XC-04 | Every shipped Continue template renders deterministically and passes semantic validation | Generate all profiles twice | MUST | Hashes + validator JSON |
+| XC-05 | Generator retains output-boundary, reparse/hard-link, `-Force`, and write-free `-CheckOnly` guarantees | Run full Continue security regression | MUST | Pytest output |
+| XC-06 | HostedAgent, LocalAgent, OnlineHybrid, and OfflineLite remain covered by provider-free behavioral tests | Run `tests/test_continue_profiles.py` | MUST | Pytest output |
+| XC-07 | Existing CI, CodeQL, release, and signing contracts remain green; workflow changes require a separately reviewed security diff | Run checks and inspect workflow delta | MUST | Check URLs + diff |
 | XC-08 | No real API keys in any committed file | `gitleaks detect` | MUST | Exit code 0 |
-| XC-09 | Conventional commit format used | Inspect commit message | MUST | Commit log |
-| XC-10 | PR is Draft and base is `qwen/thin-client-ai-hybrid-v2` | Inspect PR | MUST | PR metadata |
+| XC-09 | Production implementation changes use conventional commits and preserve review provenance | Inspect commit history | MUST | Commit log |
+| XC-10 | Integration PR remains Draft while any applicable production MUST gate is `FAIL` or `NOT RUN` | Inspect PR and sign-off matrix | MUST | PR metadata |
 
 ---
 
@@ -353,8 +354,8 @@ workbench installation, and no cached artifacts.
 
 | Environment | OS | Purpose |
 |-------------|-----|---------|
-| Clean VM 1 | Windows 10 21H2 x64, no dev tools | CW, EV, ID, UN |
-| Clean VM 2 | Windows 11 22H2 x64, no dev tools | CW, EV, ID, UN |
+| Clean VM 1 | Windows 10 22H2 x64 with active ESU, no dev tools | Legacy CW, EV, ID, UN |
+| Clean VM 2 | Windows 11 25H2 x64, no dev tools | Primary CW, EV, ID, UN |
 | Dev host | Windows 10/11 with VS Code, Continue, Ollama | AM, KS, SI, MV, FA, BC, SM |
 | Air-gapped host | No network adapter | Local mode (AM-04, PR-09 offline) |
 

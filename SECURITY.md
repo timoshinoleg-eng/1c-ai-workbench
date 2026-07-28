@@ -56,10 +56,12 @@ picture and must be understood before use:
   credential/query/fragment is rejected before any profile is written. HTTP is never
   accepted for a remote endpoint.
 - **Local/cloud isolation (LocalAgent, Offline Lite).** Local profiles accept HTTP
-  only for an explicit loopback endpoint (`127.0.0.1` / `localhost` / `::1`) with no
-  credentials, path, query or fragment. They never reference a secret, never carry an
-  `apiKey`, and must not contain a known cloud API host — a local profile cannot
-  silently become a network/cloud profile.
+  only for explicit loopback endpoints (`127.0.0.1` / `localhost` / `::1`). The
+  OpenAI-compatible LocalAgent endpoint must end in `/v1`; the Ollama autocomplete
+  endpoint stays at its native root. Credentials, query strings and fragments are
+  rejected. Local profiles never reference a secret, never carry an `apiKey`, and
+  must not contain a known cloud API host — a local profile cannot silently become
+  a network/cloud profile.
 - **Generated-profile write boundary.** Output is confined to
   `<RepoRoot>/generated/continue`; normalized absolute/traversal escapes and existing
   reparse-point components are rejected before `-Force` is considered.

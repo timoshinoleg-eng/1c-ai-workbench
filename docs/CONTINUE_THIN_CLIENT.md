@@ -105,7 +105,7 @@ Z.AI endpoint (`https://api.z.ai/api/paas/v4`) и модель `glm-4.6` про�
 models:
   - provider: openai          # локальная tool-capable OpenAI-compatible модель
     model: <local model id>   # роли: chat, edit, apply; capabilities: tool_use
-    apiBase: <loopback http>  # 127.0.0.1 / localhost / ::1, без path/query/fragment
+    apiBase: <loopback http>/v1  # OpenAI-compatible API; 127.0.0.1 / localhost / ::1
   - Ollama qwen2.5-coder:1.5b-base  # роль: autocomplete (локально)
 mcpServers:
   - 1c-code-index
@@ -115,14 +115,16 @@ mcpServers:
 - HTTP разрешён только для loopback; облачные URL, секреты и `apiKey` запрещены.
 - Модель обязана поддерживать tool calling (`tool_use`) — без него Agent-режим
   невозможен.
-- Endpoint локального агента по умолчанию совпадает с эффективным `OLLAMA_HOST`
-  автодополнения; переопределить можно через `-LocalAgentApiBase`.
+- Endpoint локального агента по умолчанию использует authority эффективного
+  `OLLAMA_HOST` и добавляет обязательный `/v1`. Ollama-автодополнение использует
+  тот же authority без `/v1`; переопределить агент можно через
+  `-LocalAgentApiBase`.
 
 ```powershell
 .\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b
-# свой локальный endpoint агента (должен быть loopback)
+# свой локальный OpenAI-compatible endpoint агента (loopback + /v1)
 .\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b `
-    -LocalAgentApiBase 127.0.0.1:8080
+    -LocalAgentApiBase http://127.0.0.1:8080/v1
 ```
 
 ### Escape hatch: своя конфигурация Continue
@@ -236,7 +238,8 @@ ollama pull qwen2.5-coder:1.5b-base
 `127.0.0.1:11434`), нормализует его в `apiBase` и принимает только явный
 loopback HTTP endpoint: `127.0.0.1`, `localhost` или `::1`. Это важно для
 Windows Ollama app, которая может использовать локальный порт `11534`.
-Удалённый host, HTTPS, credentials, path, query или fragment отклоняются:
+Для Ollama autocomplete path запрещён; для OpenAI-compatible LocalAgent требуется
+ровно `/v1`. Удалённый host, HTTPS, credentials, query или fragment отклоняются:
 Offline Lite не может незаметно превратиться в сетевой профиль.
 
 Для нестандартного локального порта задайте endpoint до генерации и подтвердите,
@@ -336,7 +339,7 @@ Production-модель прошла.
 | Генератор HostedAgent создаёт валидный YAML (preset + generic) | PASS (pytest) |
 | Генератор LocalAgent создаёт валидный YAML | PASS (pytest) |
 | Provider/model/secret matrix (preset×model×secret) | PASS (pytest) |
-| Malicious endpoint rejection (http remote, creds/query/fragment, non-loopback) | PASS (pytest) |
+| Malicious endpoint rejection (http remote, missing `/v1`, creds/query/fragment, non-loopback) | PASS (pytest) |
 | Literal-secret rejection как `-SecretName`/`-ModelId`/`-ApiBase` | PASS (pytest) |
 | Local/cloud isolation (no apiKey, no secret, no cloud host) | PASS (pytest) |
 | Exact roles/tool_use и Code/Help MCP contract для HostedAgent/LocalAgent | PASS (pytest) |

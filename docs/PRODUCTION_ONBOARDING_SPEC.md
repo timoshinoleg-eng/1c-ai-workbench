@@ -18,9 +18,9 @@ signing, or user settings.
 |---|-----------|-----------|
 | P1 | Read-only by default | No write to live 1C database at any onboarding stage |
 | P2 | Local-first | Index, MCP servers, and logs stay on the operator's machine |
-| P3 | Client-owned keys only | The workbench never ships, stores, or transmits API keys |
+| P3 | Client-owned keys only | Generators never accept key values; Continue resolves the operator-owned local secret and sends authentication only to the selected provider |
 | P4 | Fail-closed | Any unresolved prerequisite blocks progress with a clear message |
-| P5 | No phone-home | Zero telemetry, zero auto-update, zero background network calls |
+| P5 | No Workbench phone-home | Workbench-owned processes have zero telemetry, auto-update, or background network calls; VS Code, Continue, and provider traffic are audited separately |
 | P6 | Evidence-first AI | Every AI answer must cite file, line/identifier, and confidence |
 | P7 | Explicit human gate | BSL file changes require diff review and operator confirmation |
 | P8 | Reversible | Every onboarding step can be undone without data loss |
@@ -29,7 +29,7 @@ signing, or user settings.
 
 ## 2. User journey overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Phase 1: INSTALL        Phase 2: CONFIGURE       Phase 3: USE     │
 │                                                                     │
@@ -66,7 +66,7 @@ signing, or user settings.
 
 | Requirement | Minimum | Check method |
 |-------------|---------|--------------|
-| OS | Windows 10 21H2 x64 / Windows 11 22H2 x64 | `winver` |
+| OS | Windows 11 25H2 x64; Windows 10 22H2 x64 only with active ESU for legacy acceptance | `winver` + update/ESU status |
 | RAM | 8 GB (16 GB recommended for local model) | System Properties |
 | Disk | 2 GB free for workbench + index | Explorer |
 | CPython | 3.11.x 64-bit | `python --version` |
@@ -108,7 +108,7 @@ It verifies:
 
 - CPython 3.11 x64 is in PATH
 - PowerShell execution policy allows scripts (or suggests per-process bypass)
-- No Cyrillic/space characters in the workbench path
+- Workbench paths with spaces and Unicode characters resolve correctly
 - `logs/` directory is writable
 
 If any check fails, the wizard prints a specific error code (see Section 9)
@@ -122,7 +122,7 @@ and halts. The operator fixes the issue and reruns.
 
 The onboarding assistant checks for VS Code:
 
-```
+```text
 where.exe code
 ```
 
@@ -149,11 +149,16 @@ code --list-extensions | Select-String "Continue.continue"
 
 ### 4.3 Continue profile connection
 
-After VS Code + Continue are confirmed, the assistant offers to generate a
-Continue profile via the existing generator:
+After VS Code + Continue are confirmed, the assistant offers to generate the
+selected provider-neutral Continue profile via the existing generator:
 
 ```powershell
-.\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid -CheckOnly
+# Hosted BYOK/BYOM
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai -CheckOnly
+
+# Or fully-local Agent mode
+.\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent `
+    -LocalAgentModel qwen2.5-coder:7b -CheckOnly
 ```
 
 The generated YAML lands in `generated/continue/`. The operator manually
@@ -175,7 +180,7 @@ The operator chooses exactly one AI mode. The choice is recorded in
 | Key storage | Continue dotenv secret (`${{ secrets.PROVIDER_API_KEY }}`) |
 | Network | Outbound HTTPS to provider endpoint |
 | Data leaving machine | Prompts + retrieved context snippets |
-| Local model | Optional Ollama autocomplete (not required) |
+| Local model | Ollama autocomplete model required by the current HostedAgent profile |
 
 The onboarding assistant:
 
@@ -190,7 +195,7 @@ The onboarding assistant:
 | Property | Value |
 |----------|-------|
 | Provider | Internal endpoint (e.g., `https://ai.corp.internal/v1`) |
-| Key storage | Same dotenv mechanism; may also use Windows Credential Manager via Continue |
+| Key storage | Same Continue dotenv mechanism |
 | Network | Outbound HTTPS to corporate endpoint only |
 | Data leaving machine | Prompts + context to corporate network only |
 | Compliance | Operator confirms corporate data-handling policy covers AI prompts |
@@ -208,20 +213,22 @@ Additional steps:
 
 | Property | Value |
 |----------|-------|
-| Provider | Ollama (loopback only) |
+| Provider | OpenAI-compatible loopback Agent endpoint plus Ollama autocomplete, or Offline Lite |
 | Key storage | None |
-| Network | None (127.0.0.1 / ::1 only) |
+| Network | Loopback only (127.0.0.1 / localhost / ::1); no outbound provider traffic |
 | Data leaving machine | Nothing |
-| Capabilities | Autocomplete only; no chat/edit/apply/agent |
+| Capabilities | LocalAgent: chat/edit/apply + MCP Agent + autocomplete; Offline Lite: autocomplete only |
 
 The assistant:
 
-1. Checks Ollama service is running (`ollama --version`).
-2. Checks the exact model tag is pulled (`ollama list`).
-3. Validates `OLLAMA_HOST` is loopback-only.
-4. Warns: "Local model provides autocomplete only. Chat, edit, apply, and
-   MCP agent calls require a cloud or corporate AI mode."
-5. Generates Offline Lite profile.
+1. Lets the operator choose LocalAgent or Offline Lite.
+2. Checks Ollama autocomplete service and exact model tag (`ollama list`).
+3. For LocalAgent, validates an OpenAI-compatible loopback `/v1` endpoint,
+   checks `/v1/models` for the exact tool-capable model, and later proves one
+   real Agent tool call in VS Code.
+4. Validates `OLLAMA_HOST` and the Agent endpoint are loopback-only.
+5. Generates LocalAgent or Offline Lite. Offline Lite prints the explicit
+   warning that chat/edit/apply and MCP Agent calls are unavailable.
 
 ### 5.4 Mode change
 
@@ -238,9 +245,9 @@ transition timestamp.
 
 | # | Rule |
 |---|------|
-| K1 | The workbench never accepts an API key as a CLI argument, environment variable in scripts, or YAML value |
-| K2 | The workbench never prints, logs, hashes, or transmits a key value |
-| K3 | Key presence is validated by checking that a dotenv line `KEY_NAME=<non-empty>` exists; the value after `=` is never read into a variable by onboarding scripts |
+| K1 | Workbench generators never accept an API key value as a CLI argument or generated YAML literal; they accept only a validated secret name |
+| K2 | Workbench scripts never print, log, hash, persist, or pass a key value to child probes; Continue alone resolves it for the selected provider |
+| K3 | Key presence is validated by parsing the effective dotenv assignment only far enough to determine non-empty status; the value is held transiently, never returned, logged, or persisted |
 | K4 | `.env` files are in `.gitignore` and `.continueignore` |
 | K5 | The installer never creates, modifies, or deletes any `.env` file |
 | K6 | Key rotation is the operator's responsibility; the workbench provides a "where is my key" reminder but never touches the file |
@@ -254,8 +261,8 @@ Per Continue documentation, secrets resolve in order:
 3. `%USERPROFILE%/.continue/.env`
 
 The onboarding assistant prints all three paths and lets the operator choose.
-It creates the parent directory if missing but never creates the `.env` file
-itself — the operator types the key in their own editor.
+It does not create the parent directory or `.env` file and never edits a
+global Continue directory — the operator creates and edits the file directly.
 
 ### 6.3 Key revocation guidance
 
@@ -286,7 +293,9 @@ Before indexing, the assistant validates:
 - It contains at least one `Configuration.xml` (for dump) or `.bsl` file.
 - Total size is within indexer limits (current: no hard limit, but >500 MB
   triggers a warning with estimated time).
-- The path does not contain junction/symlink/reparse points.
+- The source root is canonicalized and its resolved target is shown. A root
+  junction may be accepted after explicit confirmation; nested reparse points
+  that escape the resolved source root are rejected.
 
 ### 7.3 Indexing
 
@@ -318,7 +327,7 @@ machine. State is persisted in `generated/onboarding-state.json`.
 
 ### 8.1 States
 
-```
+```text
                     ┌─────────────────────────────────────────────────┐
                     │                                                 │
                     ▼                                                 │
@@ -379,8 +388,8 @@ machine. State is persisted in `generated/onboarding-state.json`.
   "version": "1.0.0",
   "current_state": "INDEX_OK",
   "ai_mode": "cloud_byok",
-  "ai_provider": "groq",
-  "ai_endpoint_url": null,
+  "ai_provider": "zai",
+  "ai_endpoint_url": "https://api.z.ai/api/paas/v4",
   "source_type": "dump",
   "source_path": "C:\\1c-ai-client\\dump",
   "last_index_utc": "2026-07-28T14:30:00Z",
@@ -405,8 +414,10 @@ machine. State is persisted in `generated/onboarding-state.json`.
 - State only advances forward or resets to a named earlier state.
 - No state transition occurs without an explicit operator action or a
   passing validation check.
-- `CHANGE_APPLIED` is the only state where a file on disk is modified, and
-  only after explicit operator confirmation of a diff.
+- `CHANGE_APPLIED` is the only state where the onboarding assistant may modify
+  a file, and only inside the canonical source mirror after explicit operator
+  confirmation of a diff. Continue's general Apply button is not treated as
+  this enforcement boundary until the controlled wrapper is implemented.
 - The state file is in `generated/` and is preserved across upgrades.
 - The state file never contains API keys, key hashes, or prompt content.
 
@@ -425,7 +436,7 @@ ticket.
 |------|-------------|-------------|-------|----------|
 | E101 | Python не найден. Установите CPython 3.11 x64. | Python not found. Install CPython 3.11 x64. | CPython not in PATH | Install from python.org, restart terminal |
 | E102 | Версия Python не поддерживается: {ver}. Нужна 3.11.x. | Unsupported Python version: {ver}. Need 3.11.x. | Wrong Python version | Install 3.11.x, check PATH order |
-| E103 | Путь содержит кириллицу или пробелы: {path} | Path contains Cyrillic or spaces: {path} | Non-ASCII install path | Reinstall to ASCII path (e.g., `C:\1c-ai-workbench`) |
+| E103 | Путь не удалось безопасно разрешить: {path} | Path could not be resolved safely: {path} | Invalid, inaccessible, or escaping path | Select an accessible local path and retry |
 | E104 | Папка logs недоступна для записи. | Logs directory is not writable. | Permissions / antivirus | Grant Modify permission; check antivirus exclusions |
 | E105 | PowerShell Execution Policy блокирует скрипты. | PowerShell Execution Policy blocks scripts. | Restricted policy | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
 | E106 | Недостаточно места на диске: {free} МБ (нужно {need} МБ). | Insufficient disk space: {free} MB (need {need} MB). | Disk full | Free space or choose another drive |
@@ -448,6 +459,7 @@ ticket.
 | E304 | Модель {model} не найдена. Выполните: ollama pull {model} | Model {model} not found. Run: ollama pull {model} | Model not pulled | Pull the exact model tag |
 | E305 | OLLAMA_HOST указывает на удалённый адрес: {host}. Только loopback разрешён. | OLLAMA_HOST points to remote address: {host}. Only loopback allowed. | Non-loopback Ollama | Set to 127.0.0.1 or localhost |
 | E306 | URL корпоративного endpoint не является HTTPS: {url} | Corporate endpoint URL is not HTTPS: {url} | HTTP endpoint | Use HTTPS or confirm local proxy |
+| E307 | Локальный Agent endpoint должен быть loopback OpenAI-compatible URL с `/v1`: {url} | Local Agent endpoint must be a loopback OpenAI-compatible URL ending in `/v1`: {url} | Wrong host, scheme, or API path | Use `http://127.0.0.1:<port>/v1` and verify `/v1/models` |
 
 ### 9.4 Source / index errors (E4xx)
 
@@ -458,7 +470,7 @@ ticket.
 | E403 | Выгрузка пуста (0 файлов). | Dump is empty (0 files). | Empty directory | Place actual export files |
 | E404 | Индекс не создан. Запустите индексацию. | Index not created. Run indexing. | First run / index deleted | `.\scripts\04_index_1c_dump.ps1 -Force` |
 | E405 | Индекс повреждён или несовместим. Пересоздайте с -Force. | Index corrupted or incompatible. Rebuild with -Force. | Version mismatch / corruption | Delete `generated/index/`, reindex |
-| E406 | Путь содержит junction/symlink: {path}. Удалите ссылку. | Path contains junction/symlink: {path}. Remove the link. | Reparse point in source | Use real directory, not symlink |
+| E406 | Вложенная ссылка выходит за границы выгрузки: {path}. | Nested link escapes the resolved source root: {path}. | Reparse-point traversal in source | Remove the escaping link or choose a contained source |
 
 ### 9.5 MCP errors (E5xx)
 
@@ -559,8 +571,8 @@ Substituting a similar name without disclosure is a spec violation.
 ### 11.3 State transition
 
 On receiving a valid evidence-based answer: `MCP_OK` → `FIRST_ANSWER`.
-The assistant records the timestamp and query (not the full AI response)
-in the state file.
+The assistant records only the timestamp and a generated correlation ID. Prompt
+and response text are excluded from the state file.
 
 ---
 
@@ -571,8 +583,9 @@ in the state file.
 1. Operator asks the AI to modify a BSL file (e.g., "Добавь проверку на
    ноль в РассчитатьСумму").
 2. AI produces a unified diff or a before/after code block.
-3. The onboarding assistant (or Continue's built-in diff view) renders the
-   diff with syntax highlighting.
+3. The onboarding assistant renders the diff with syntax highlighting and
+   canonicalizes every target under `generated/index/source-mirror`. Continue's
+   built-in diff view may be used for display, but is not the security gate.
 4. Operator sees: file path, line range, removed lines (red), added lines
    (green), and a plain-language summary of the change.
 
@@ -580,11 +593,11 @@ in the state file.
 
 | Rule | Description |
 |------|-------------|
-| C1 | No file is modified without explicit operator confirmation (button press, `y` input, or Continue "Apply" click) |
+| C1 | No file is modified without explicit confirmation through the controlled onboarding gate; a raw Continue "Apply" click alone is insufficient |
 | C2 | The diff is shown BEFORE confirmation; no "apply then show" |
 | C3 | The operator can reject at any time; rejection returns to `FIRST_ANSWER` state |
 | C4 | After apply, the assistant suggests re-running the indexer incrementally |
-| C5 | The original file content is recoverable: the assistant prints `git diff` or suggests `Ctrl+Z` in the editor |
+| C5 | The original file content is recoverable from a pre-apply hash-locked backup or Git; `Ctrl+Z` alone is not the recovery contract |
 
 ### 12.3 What is NOT allowed
 
@@ -634,7 +647,7 @@ This is a non-negotiable production invariant.
 | Data class | Examples | Handling |
 |------------|----------|----------|
 | Secret | API keys, tokens, passwords | Never logged, never printed, never stored in state file |
-| Sensitive | 1C dump content, BSL source code, business logic | Stays local; may leave machine only via operator-initiated AI query |
+| Sensitive | 1C dump content, BSL source code, business logic | Stays local except snippets explicitly sent by Continue in an operator-initiated provider query |
 | Operational | Index stats, MCP handshake results, error codes, timestamps | Logged to `logs/`; safe for support tickets |
 | Public | Documentation, version numbers, OS version | No restriction |
 
@@ -643,7 +656,7 @@ This is a non-negotiable production invariant.
 | # | Rule |
 |---|------|
 | L1 | No log line may contain an API key, token, password, or secret value |
-| L2 | No log line may contain more than 80 characters of BSL source code |
+| L2 | Routine logs contain no BSL source content; an explicit diagnostic export requires separate operator consent and redaction |
 | L3 | Error messages may contain file paths and error codes but not file contents |
 | L4 | The onboarding state file never contains prompt text, AI response text, or key material |
 | L5 | MCP stdio probe processes receive no secret values in arguments or environment beyond what the MCP server itself requires |
@@ -654,16 +667,16 @@ This is a non-negotiable production invariant.
 
 | Mode | Network calls | Destination |
 |------|--------------|-------------|
-| Cloud BYOK | AI queries only | Operator-chosen provider |
-| Corporate | AI queries only | Corporate endpoint |
-| Local | None | — |
-| All modes | Zero telemetry, zero auto-update, zero crash reporting | — |
+| Cloud BYOK | Workbench-owned traffic: none; Continue sends operator-initiated AI queries | Operator-chosen provider |
+| Corporate | Workbench-owned traffic: none; Continue sends operator-initiated AI queries | Corporate endpoint |
+| Local | Workbench-owned traffic: loopback only | 127.0.0.1 / localhost / ::1 |
+| All modes | Workbench processes: zero telemetry, auto-update, and crash reporting | VS Code/Continue network behavior is measured and configured separately |
 
 ### 14.4 Operator privacy checklist
 
 Printed at the end of onboarding:
 
-```
+```text
 ☐ API-ключ хранится только в локальном .env и не попадает в Git
 ☐ Выгрузка 1С не отправляется никуда, кроме выбранного AI-провайдера
 ☐ Логи в logs/ не содержат ключей и исходного кода
@@ -801,7 +814,7 @@ None of these exist yet; they are design outputs for subsequent PRs.
 | M7 | Clean-Windows install requires no admin privileges |
 | M8 | Uninstall preserves `generated/` and `logs/` |
 | M9 | Downgrade rejected by default |
-| M10 | Onboarding works fully offline in Local mode (no network calls) |
+| M10 | LocalAgent and Offline Lite work with the network adapter disabled; Workbench traffic remains loopback-only |
 | M11 | `.env` files never created, modified, or deleted by workbench scripts |
 | M12 | Error catalog is machine-readable and versioned |
 

@@ -92,7 +92,9 @@
 ### LocalAgent и Offline Lite
 
 LocalAgent и Offline Lite ключей не используют вовсе: только loopback HTTP, без
-облачных URL и секретов. Подробнее — [CONTINUE_THIN_CLIENT.md](CONTINUE_THIN_CLIENT.md).
+облачных URL и секретов. Для OpenAI-compatible LocalAgent обязателен путь `/v1`;
+Ollama autocomplete использует native root. Подробнее —
+[CONTINUE_THIN_CLIENT.md](CONTINUE_THIN_CLIENT.md).
 
 ## Перед отправкой архива
 

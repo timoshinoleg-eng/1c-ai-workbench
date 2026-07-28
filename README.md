@@ -187,7 +187,8 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
   `https://api.z.ai/api/paas/v4`, `glm-4.6`), `groq-legacy`. Ключ задаётся только
   именем Continue-секрета, никогда значением.
 - **LocalAgent** — полностью офлайн: одна локальная tool-capable OpenAI-compatible
-  модель (loopback HTTP) плюс те же MCP и Ollama-автодополнение; без облака и секретов.
+  модель (loopback HTTP `/v1`) плюс те же MCP и Ollama-автодополнение; без облака
+  и секретов.
 - **Online Hybrid** (legacy) — облачный Groq (две модели `openai/gpt-oss-120b` и
   `qwen/qwen3.6-27b` Preview) плюс локальные MCP и Ollama-автодополнение.
 - **Offline Lite — autocomplete only** — только локальное автодополнение Ollama;
@@ -205,8 +206,8 @@ python .\scripts\29_validate_continue_profile.py --kind hosted --config .\genera
 
 Генератор пишет только в `generated\continue`, блокирует
 absolute/traversal/reparse escapes даже с `-Force`, принимает только HTTPS для
-удалённого endpoint и только loopback HTTP для локального, отклоняет credentials/
-query/fragment в URL и литеральные значения ключей, а `-CheckOnly` выполняет
+удалённого endpoint и только loopback HTTP `/v1` для локального агента, отклоняет
+credentials/query/fragment в URL и литеральные значения ключей, а `-CheckOnly` выполняет
 semantic YAML validation через stdin без записи файлов.
 
 Второго RAG, векторной БД и локального embedding pipeline в профилях нет: точные
