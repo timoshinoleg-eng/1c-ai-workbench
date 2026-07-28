@@ -268,7 +268,11 @@ function Invoke-SemanticValidation {
     $previousBytecode = $env:PYTHONDONTWRITEBYTECODE
     try {
         $env:PYTHONDONTWRITEBYTECODE = '1'
-        $validationOutput = $Rendered | & $python $validator --stdin --kind $kind --repo-root $Root 2>&1
+        # Windows PowerShell 5.1 may recode native-command stdin through its
+        # legacy console encoding. Base64 keeps the in-memory UTF-8 YAML exact
+        # without creating a temporary file.
+        $encoded = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Rendered))
+        $validationOutput = & $python $validator --stdin-base64 $encoded --kind $kind --repo-root $Root 2>&1
         $validationExit = $LASTEXITCODE
     }
     finally {
@@ -299,16 +303,26 @@ function Test-DotEnvSecret {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         return $false
     }
+    $matched = $false
+    $configured = $false
     foreach ($line in [System.IO.File]::ReadAllLines($Path, [System.Text.Encoding]::UTF8)) {
         $match = [regex]::Match($line, "^\s*(?:export\s+)?$([regex]::Escape($Name))\s*=\s*(?<value>.*)\s*$")
         if ($match.Success) {
+            $matched = $true
             $value = $match.Groups['value'].Value.Trim()
-            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $value.StartsWith('#')) {
-                return $true
+            if (
+                $value.Length -ge 2 -and
+                (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+                ($value.StartsWith("'") -and $value.EndsWith("'")))
+            ) {
+                $value = $value.Substring(1, $value.Length - 2).Trim()
             }
+            # Dotenv uses the last assignment for a duplicated key. Keep scanning
+            # and report ready only when that effective value is non-empty.
+            $configured = -not [string]::IsNullOrWhiteSpace($value) -and -not $value.StartsWith('#')
         }
     }
-    return $false
+    return $matched -and $configured
 }
 
 function Get-ContinueSecretStatus {
@@ -516,10 +530,6 @@ if ($CheckOnly) {
     exit 0
 }
 
-if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
-    Write-Failure -Message "Output already exists (use -Force to overwrite): $OutputPath" -Code 4
-}
-
 $outputDir = Split-Path -Parent $OutputPath
 if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -529,8 +539,39 @@ if (-not (Test-Path -LiteralPath $outputDir)) {
 # junction/symlink in the output chain.
 Assert-NoReparsePoint -BoundaryRoot $root -CandidatePath $OutputPath
 
+if (Test-Path -LiteralPath $OutputPath) {
+    if (-not $Force) {
+        Write-Failure -Message "Output already exists (use -Force to overwrite): $OutputPath" -Code 4
+    }
+    # Unlink the destination instead of opening it in place. This prevents a
+    # same-volume NTFS hard link below generated\continue from modifying its
+    # external alias when -Force is used.
+    Remove-Item -LiteralPath $OutputPath -Force -ErrorAction Stop
+}
+
+# CreateNew fails closed if another process inserts any destination entry
+# (including a hard link or reparse point) between the unlink and the write.
+Assert-NoReparsePoint -BoundaryRoot $root -CandidatePath $OutputPath
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($OutputPath, $rendered, $utf8NoBom)
+$bytes = $utf8NoBom.GetBytes($rendered)
+$stream = $null
+try {
+    $stream = New-Object System.IO.FileStream(
+        $OutputPath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None
+    )
+    $stream.Write($bytes, 0, $bytes.Length)
+}
+catch {
+    Write-Failure -Message "Output could not be created safely: $OutputPath" -Code 6
+}
+finally {
+    if ($null -ne $stream) {
+        $stream.Dispose()
+    }
+}
 
 Write-Output "Profile: $Profile"
 Write-Output "Wrote: $OutputPath"

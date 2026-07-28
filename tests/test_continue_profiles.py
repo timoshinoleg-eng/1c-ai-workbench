@@ -126,6 +126,25 @@ def test_generator_refuses_overwrite_without_force(fake_repo: Path) -> None:
     assert forced.returncode == 0, forced.stderr
 
 
+@pytest.mark.skipif(os.name != "nt", reason="NTFS hard-link behavior")
+def test_generator_force_replaces_hard_link_without_touching_external_alias(fake_repo: Path, tmp_path: Path) -> None:
+    allowed = fake_repo / "generated" / "continue"
+    allowed.mkdir(parents=True)
+    outside = tmp_path / "outside.yaml"
+    outside.write_bytes(b"external-sentinel")
+    linked = allowed / "profile.yaml"
+    try:
+        os.link(outside, linked)
+    except OSError as exc:
+        pytest.skip(f"hard-link creation unavailable: {exc}")
+
+    result = _run_generator(["-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(linked), "-Force"])
+    assert result.returncode == 0, result.stderr
+    assert outside.read_bytes() == b"external-sentinel"
+    assert linked.read_bytes() != b"external-sentinel"
+    assert not os.path.samefile(outside, linked)
+
+
 def test_generator_handles_spaces_and_cyrillic(tmp_path: Path) -> None:
     repo = tmp_path / "репо с пробелом"
     (repo / "configs" / "continue").mkdir(parents=True)
@@ -216,14 +235,69 @@ def test_generator_detects_workspace_continue_dotenv_without_printing_value(fake
     assert not out.exists()
 
 
+@pytest.mark.parametrize(
+    "dotenv_body",
+    [
+        'GROQ_API_KEY=""\n',
+        "GROQ_API_KEY='   '\n",
+        f"GROQ_API_KEY={FAKE_SECRET}\nGROQ_API_KEY=''\n",
+    ],
+)
+def test_generator_rejects_effectively_empty_continue_dotenv(fake_repo: Path, dotenv_body: str) -> None:
+    secret_file = fake_repo / ".continue" / ".env"
+    secret_file.write_text(dotenv_body, encoding="utf-8")
+    out = _output(fake_repo, "profile.yaml")
+    env = {k: v for k, v in os.environ.items() if k != "GROQ_API_KEY"}
+    env["USERPROFILE"] = str(fake_repo.parent / "isolated-user-profile")
+    result = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(GENERATOR),
+            "-Profile",
+            "OnlineHybrid",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(out),
+            "-RequireRuntimeReady",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "not configured in Continue dotenv sources" in result.stdout
+    assert FAKE_SECRET not in result.stdout
+    assert FAKE_SECRET not in result.stderr
+    assert not out.exists()
+
+
 def test_generator_render_only_succeeds_without_runtime(fake_repo: Path) -> None:
     out = _output(fake_repo, "profile.yaml")
     # No -RequireRuntimeReady: generation must succeed even though the temp repo
     # has no bsl-indexer.exe, no .venv, no help DB and no GROQ_API_KEY.
     env = {k: v for k, v in os.environ.items() if k != "GROQ_API_KEY"}
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(GENERATOR),
-         "-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)],
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(GENERATOR),
+            "-Profile",
+            "OnlineHybrid",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(out),
+        ],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -236,7 +310,9 @@ def test_generator_render_only_succeeds_without_runtime(fake_repo: Path) -> None
 
 def test_generator_require_runtime_ready_fails_without_runtime(fake_repo: Path) -> None:
     out = _output(fake_repo, "profile.yaml")
-    result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"])
+    result = _run_generator(
+        ["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"]
+    )
     assert result.returncode != 0
     assert not out.exists()
     assert "Continue VS Code extension" in result.stdout
@@ -253,12 +329,25 @@ def test_generator_require_runtime_ready_offline_fails_without_ollama(fake_repo:
     out = _output(fake_repo, "offline.yaml")
     env = {
         "PATH": str(Path(sys.executable).parent),
-        "SystemRoot": os.environ.get("SystemRoot", r"C:\Windows"),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
         "USERPROFILE": os.environ.get("USERPROFILE", str(tmp_path)),
     }
     result = subprocess.run(
-        [pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(GENERATOR),
-         "-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"],
+        [
+            pwsh,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(GENERATOR),
+            "-Profile",
+            "OfflineLite",
+            "-RepoRoot",
+            str(fake_repo),
+            "-OutputPath",
+            str(out),
+            "-RequireRuntimeReady",
+        ],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -271,9 +360,7 @@ def test_generator_require_runtime_ready_offline_fails_without_ollama(fake_repo:
 
 def test_generator_rejects_absolute_output_escape_even_with_force(fake_repo: Path, tmp_path: Path) -> None:
     outside = tmp_path / "outside.yaml"
-    result = _run_generator(
-        ["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(outside), "-Force"]
-    )
+    result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(outside), "-Force"])
     assert result.returncode != 0
     assert "must stay under" in result.stderr
     assert not outside.exists()
@@ -330,7 +417,7 @@ def _generated(fake_repo: Path, profile: str, kind: str) -> Path:
     out = _output(fake_repo, f"{profile}.yaml")
     result = _run_generator(["-Profile", profile, "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
     assert result.returncode == 0, result.stderr
-    assert validator.validate_profile(out, kind, ROOT) == []
+    assert validator.validate_profile(out, kind, fake_repo) == []
     return out
 
 
@@ -378,8 +465,8 @@ def test_configs_have_no_codebase_or_second_rag(fake_repo: Path) -> None:
 
 
 def test_validator_accepts_shipped_templates_via_generation(fake_repo: Path) -> None:
-    assert validator.validate_profile(_generated(fake_repo, "OnlineHybrid", "online"), "online", ROOT) == []
-    assert validator.validate_profile(_generated(fake_repo, "OfflineLite", "offline"), "offline", ROOT) == []
+    assert validator.validate_profile(_generated(fake_repo, "OnlineHybrid", "online"), "online", fake_repo) == []
+    assert validator.validate_profile(_generated(fake_repo, "OfflineLite", "offline"), "offline", fake_repo) == []
 
 
 @pytest.mark.parametrize(
@@ -389,8 +476,32 @@ def test_validator_accepts_shipped_templates_via_generation(fake_repo: Path) -> 
         ("online", lambda d: d.update({"schema": "v2"}), "schema must be 'v1'"),
         ("online", lambda d: d["models"][0].update({"apiKey": "gsk_realsecretvalue1234567890"}), "secret"),
         ("online", lambda d: d["models"][0].update({"roles": ["chat", "embed"]}), "embed"),
+        (
+            "online",
+            lambda d: next(s for s in d["mcpServers"] if s["name"] == "1c-help-index").update(
+                {"command": "powershell.exe", "args": ["-NoProfile"]}
+            ),
+            "command must be exactly",
+        ),
+        (
+            "online",
+            lambda d: d["mcpServers"].append({"name": "extra", "command": "powershell.exe"}),
+            "server names must be exactly",
+        ),
+        (
+            "online",
+            lambda d: d["models"].append(
+                {"name": "extra", "provider": "ollama", "model": "extra:latest", "roles": ["autocomplete"]}
+            ),
+            "models must be exactly",
+        ),
         ("offline", lambda d: d.update({"mcpServers": [{"name": "x", "command": "y"}]}), "mcpServers"),
-        ("offline", lambda d: d["models"].append({"name": "g", "provider": "groq", "model": "x", "roles": ["chat"]}), "ollama"),
+        (
+            "offline",
+            lambda d: d["models"].append({"name": "g", "provider": "groq", "model": "x", "roles": ["chat"]}),
+            "ollama",
+        ),
+        ("offline", lambda d: d["models"][0].update({"model": "definitely-not-qwen:latest"}), "model must be exactly"),
         ("offline", lambda d: d["models"][0].update({"apiBase": "https://ollama.example.invalid"}), "loopback"),
     ],
 )

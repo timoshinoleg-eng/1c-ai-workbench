@@ -18,7 +18,10 @@ Exit code is non-zero when any check fails.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -57,6 +60,12 @@ def _model_roles(model: dict[str, Any]) -> list[str]:
     if not isinstance(roles, list):
         return [str(roles)]
     return [str(role) for role in roles]
+
+
+def _same_path(actual: object, expected: Path) -> bool:
+    if not isinstance(actual, str) or not actual:
+        return False
+    return os.path.normcase(os.path.abspath(actual)) == os.path.normcase(os.path.abspath(expected))
 
 
 def _validate_local_ollama_endpoint(model: dict[str, Any], errors: list[str]) -> None:
@@ -141,22 +150,18 @@ def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> N
                     errors.append(f"{label}.apiKey must be a ${{{{ secrets.* }}}} reference, got {api_key!r}")
 
 
-def _online_checks(data: dict[str, Any], errors: list[str]) -> None:
+def _online_checks(data: dict[str, Any], errors: list[str], repo_root: Path) -> None:
     models = data.get("models") or []
     groq_models = [m for m in models if isinstance(m, dict) and m.get("provider") == "groq"]
-    if not groq_models:
-        errors.append("Online Hybrid requires at least one Groq cloud model")
-
-    groq_model_ids = {str(m.get("model")) for m in groq_models}
-    missing = REQUIRED_GROQ_MODELS - groq_model_ids
-    if missing:
-        errors.append(f"Online Hybrid is missing selectable Groq models: {sorted(missing)}")
+    groq_model_ids = [str(m.get("model")) for m in groq_models]
+    if len(groq_models) != 2 or set(groq_model_ids) != REQUIRED_GROQ_MODELS or len(set(groq_model_ids)) != 2:
+        errors.append(f"Online Hybrid Groq models must be exactly {sorted(REQUIRED_GROQ_MODELS)}")
 
     for model in groq_models:
         label = f"groq model {model.get('model')!r}"
         roles = set(_model_roles(model))
-        if not {"chat", "edit", "apply"}.issubset(roles):
-            errors.append(f"{label} must have chat/edit/apply roles, got {sorted(roles)}")
+        if roles != {"chat", "edit", "apply"}:
+            errors.append(f"{label} roles must be exactly chat/edit/apply, got {sorted(roles)}")
         if model.get("apiKey") != GROQ_KEY_LITERAL:
             errors.append(f"{label} apiKey must be exactly {GROQ_KEY_LITERAL!r}")
         capabilities = model.get("capabilities") or []
@@ -165,38 +170,55 @@ def _online_checks(data: dict[str, Any], errors: list[str]) -> None:
 
     ollama = [m for m in models if isinstance(m, dict) and m.get("provider") == "ollama"]
     autocomplete = [m for m in ollama if str(m.get("model")) == OLLAMA_AUTOCOMPLETE_MODEL]
-    if not autocomplete:
-        errors.append(f"Online Hybrid requires Ollama autocomplete model {OLLAMA_AUTOCOMPLETE_MODEL!r}")
+    if len(models) != 3 or len(ollama) != 1 or len(autocomplete) != 1:
+        errors.append(
+            "Online Hybrid models must be exactly two required Groq models and "
+            f"one Ollama {OLLAMA_AUTOCOMPLETE_MODEL!r} model"
+        )
     for model in autocomplete:
         if set(_model_roles(model)) != {"autocomplete"}:
             errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
         _validate_local_ollama_endpoint(model, errors)
 
     servers = data.get("mcpServers") or []
-    server_names = {str(s.get("name")) for s in servers if isinstance(s, dict)}
-    for required in ("1c-code-index", "1c-help-index"):
-        if required not in server_names:
-            errors.append(f"Online Hybrid requires MCP server {required!r}")
+    server_names = [str(s.get("name")) for s in servers if isinstance(s, dict)]
+    required_servers = {"1c-code-index", "1c-help-index"}
+    if len(servers) != 2 or len(server_names) != 2 or set(server_names) != required_servers:
+        errors.append(f"Online Hybrid MCP server names must be exactly {sorted(required_servers)} with no duplicates")
 
     by_name = {str(s.get("name")): s for s in servers if isinstance(s, dict)}
     code = by_name.get("1c-code-index")
     if code is not None:
         args = [str(a) for a in (code.get("args") or [])]
-        command = str(code.get("command") or "")
-        if not command.endswith("bsl-indexer.exe"):
-            errors.append("1c-code-index command must point at bsl-indexer.exe")
-        if "serve" not in args or "--transport" not in args or "stdio" not in args:
-            errors.append("1c-code-index args must preserve 'serve --transport stdio'")
-        if not any(a.startswith("onec=") for a in args):
-            errors.append("1c-code-index args must include an 'onec=' source-mirror path")
-        if "CODE_INDEX_HOME" not in (code.get("env") or {}):
-            errors.append("1c-code-index env must set CODE_INDEX_HOME")
+        expected_command = repo_root / "tools" / "code-index-mcp" / "target" / "release" / "bsl-indexer.exe"
+        expected_source = repo_root / "generated" / "index" / "source-mirror"
+        expected_home = repo_root / "generated" / "code-index-home"
+        if not _same_path(code.get("command"), expected_command):
+            errors.append(f"1c-code-index command must be exactly repo-local {expected_command}")
+        if len(args) != 5 or args[:2] != ["serve", "--path"] or args[3:] != ["--transport", "stdio"]:
+            errors.append("1c-code-index args must be exactly 'serve --path onec=<source-mirror> --transport stdio'")
+        elif not args[2].startswith("onec=") or not _same_path(args[2][len("onec=") :], expected_source):
+            errors.append(f"1c-code-index source mirror must be exactly repo-local {expected_source}")
+        code_env = code.get("env") or {}
+        if set(code_env) != {"CODE_INDEX_HOME"} or not _same_path(code_env.get("CODE_INDEX_HOME"), expected_home):
+            errors.append(f"1c-code-index env must set only repo-local CODE_INDEX_HOME={expected_home}")
 
     help_server = by_name.get("1c-help-index")
     if help_server is not None:
+        expected_python = repo_root / ".venv" / "Scripts" / "python.exe"
+        expected_server = repo_root / "tools" / "help-index-mcp" / "server.py"
+        help_args = help_server.get("args") or []
         env = help_server.get("env") or {}
+        if not _same_path(help_server.get("command"), expected_python):
+            errors.append(f"1c-help-index command must be exactly repo-local {expected_python}")
+        if len(help_args) != 1 or not _same_path(help_args[0], expected_server):
+            errors.append(f"1c-help-index args must contain only repo-local {expected_server}")
+        if set(env) != {"HELP_INDEX_MODE", "WORKBENCH_ROOT"}:
+            errors.append("1c-help-index env must contain only HELP_INDEX_MODE and WORKBENCH_ROOT")
         if env.get("HELP_INDEX_MODE") != "readonly":
             errors.append("1c-help-index env must set HELP_INDEX_MODE=readonly")
+        if not _same_path(env.get("WORKBENCH_ROOT"), repo_root):
+            errors.append(f"1c-help-index WORKBENCH_ROOT must be exactly {repo_root}")
 
 
 def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> None:
@@ -215,6 +237,8 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
             errors.append(f"Offline Lite must not contain a cloud API URL ({url_marker})")
 
     models = data.get("models") or []
+    if len(models) != 1:
+        errors.append("Offline Lite must define exactly one Ollama autocomplete model")
     all_roles: set[str] = set()
     for model in models:
         if not isinstance(model, dict):
@@ -222,6 +246,8 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
         provider = str(model.get("provider")).lower()
         if provider in CLOUD_PROVIDERS or provider != "ollama":
             errors.append(f"Offline Lite allows only the ollama provider, got {provider!r}")
+        if model.get("model") != OLLAMA_AUTOCOMPLETE_MODEL:
+            errors.append(f"Offline Lite model must be exactly {OLLAMA_AUTOCOMPLETE_MODEL!r}")
         _validate_local_ollama_endpoint(model, errors)
         all_roles.update(_model_roles(model))
     if all_roles and all_roles != {"autocomplete"}:
@@ -249,7 +275,7 @@ def validate_profile_text(raw: str, kind: str, repo_root: Path) -> list[str]:
     canonical = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     _common_checks(data, canonical, errors)
     if kind == "online":
-        _online_checks(data, errors)
+        _online_checks(data, errors, repo_root)
     elif kind == "offline":
         _offline_checks(data, canonical, errors)
     else:
@@ -281,6 +307,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Read rendered config.yaml from stdin (semantic validation without a temporary file)",
     )
+    source.add_argument(
+        "--stdin-base64",
+        help="Decode rendered UTF-8 config.yaml from base64 (PowerShell 5.1-safe in-memory validation)",
+    )
     parser.add_argument("--kind", choices=("online", "offline"), required=True, help="Expected profile kind")
     parser.add_argument("--repo-root", type=Path, default=root, help="Workbench root for rules/ignore checks")
     return parser.parse_args()
@@ -292,6 +322,14 @@ def main() -> int:
         config_label = "<stdin>"
         raw = sys.stdin.buffer.read().decode("utf-8")
         errors = validate_profile_text(raw, args.kind, args.repo_root.resolve())
+    elif args.stdin_base64 is not None:
+        config_label = "<stdin-base64>"
+        try:
+            raw = base64.b64decode(args.stdin_base64, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            errors = [f"invalid base64 UTF-8 input: {exc}"]
+        else:
+            errors = validate_profile_text(raw, args.kind, args.repo_root.resolve())
     else:
         config_path = args.config.resolve()
         config_label = str(config_path)
