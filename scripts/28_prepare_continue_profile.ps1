@@ -6,8 +6,14 @@
     Replaces the double-curly path placeholders in a configs/continue template with
     absolute Windows paths and writes deterministic UTF-8 (no BOM, LF) output.
 
-    The Groq API key is never accepted as a parameter, printed or embedded; the literal
-    Continue secret reference `${{ secrets.GROQ_API_KEY }}` is preserved as-is.
+    Provider-neutral since v1: the HostedAgent and LocalAgent profiles accept any
+    OpenAI-compatible provider ("bring your own key or your own model"). The optional
+    Groq-based OnlineHybrid profile is kept as a legacy preset.
+
+    An API key is NEVER accepted as a parameter value, NEVER printed and NEVER
+    embedded. The operator supplies only the NAME of a Continue secret, which becomes
+    the literal reference `${{ secrets.<NAME> }}`. A value that looks like a real key
+    is rejected. For the local profile no secret is referenced at all.
 
     This script only writes under <RepoRoot>/generated/continue/. It never writes to
     the user's ~/.continue directory and never installs Continue, Ollama, Java or models.
@@ -16,8 +22,40 @@
     Workbench root. Defaults to the parent of the scripts/ directory.
 
 .PARAMETER Profile
-    OnlineHybrid (Groq chat/edit/apply + local MCP + Ollama autocomplete) or
-    OfflineLite (Ollama autocomplete only; no cloud, no MCP, no secrets).
+    HostedAgent (one user OpenAI-compatible HTTPS model for chat/edit/apply, tool_use,
+    local Code/Help MCP, Ollama autocomplete), LocalAgent (fully offline: one local
+    loopback tool-capable model, local MCP, Ollama autocomplete; no cloud, no secret),
+    OnlineHybrid (legacy Groq dual-model preset) or OfflineLite (Ollama autocomplete
+    only; no cloud, no MCP, no secrets).
+
+.PARAMETER Preset
+    Only meaningful for HostedAgent. Supplies a default apiBase, default secret NAME
+    and default model id that parameters can still override:
+    generic (no defaults; -ApiBase, -ModelId, -SecretName required),
+    openrouter (https://openrouter.ai/api/v1, OPENROUTER_API_KEY),
+    zai (https://api.z.ai/api/paas/v4, ZAI_API_KEY, glm-4.6),
+    groq-legacy (https://api.groq.com/openai/v1, GROQ_API_KEY, openai/gpt-oss-120b).
+
+.PARAMETER ApiBase
+    HostedAgent only. HTTPS base URL of an OpenAI-compatible endpoint. Must be https,
+    with a host and no userinfo, query string or fragment. Required unless the preset
+    supplies one.
+
+.PARAMETER ModelId
+    HostedAgent only. The hosted model identifier (e.g. glm-4.6). Required unless the
+    preset supplies a default. A value that looks like a literal secret is rejected.
+
+.PARAMETER SecretName
+    HostedAgent only. The NAME of a Continue secret (e.g. ZAI_API_KEY), uppercased and
+    used only inside `${{ secrets.<NAME> }}`. The key VALUE must never be passed here;
+    a value that looks like a real credential is rejected.
+
+.PARAMETER LocalAgentModel
+    LocalAgent only. Model id of a local tool-capable OpenAI-compatible model.
+
+.PARAMETER LocalAgentApiBase
+    LocalAgent only. Optional loopback HTTP endpoint for the local agent model.
+    Defaults to the same effective OLLAMA_HOST as the autocomplete model.
 
 .PARAMETER OutputPath
     Output file path confined to <RepoRoot>/generated/continue/. A relative value is
@@ -32,9 +70,18 @@
 
 .PARAMETER RequireRuntimeReady
     Fail with a non-zero exit code when a runtime required by the selected profile is
-    missing or cannot complete an MCP/Ollama readiness probe. For IDE use, the Groq
-    key must be present in a Continue-supported dotenv file; shell environment alone
-    is CLI-only and does not satisfy this gate.
+    missing or cannot complete an MCP/Ollama readiness probe. For HostedAgent IDE use,
+    the named secret must be present in a Continue-supported dotenv file; shell
+    environment alone is CLI-only and does not satisfy this gate.
+
+.EXAMPLE
+    .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
+
+.EXAMPLE
+    .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -ApiBase https://api.openai.com/v1 -ModelId gpt-4o-mini -SecretName OPENAI_API_KEY
+
+.EXAMPLE
+    .\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b
 
 .EXAMPLE
     .\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid
@@ -48,8 +95,27 @@ param(
     [string]$RepoRoot,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('OnlineHybrid', 'OfflineLite')]
+    [ValidateSet('HostedAgent', 'LocalAgent', 'OnlineHybrid', 'OfflineLite')]
     [string]$Profile,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('generic', 'openrouter', 'zai', 'groq-legacy')]
+    [string]$Preset = 'generic',
+
+    [Parameter(Mandatory = $false)]
+    [string]$ApiBase,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ModelId,
+
+    [Parameter(Mandatory = $false)]
+    [string]$SecretName,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LocalAgentModel,
+
+    [Parameter(Mandatory = $false)]
+    [string]$LocalAgentApiBase,
 
     [Parameter(Mandatory = $false)]
     [string]$OutputPath,
@@ -155,9 +221,170 @@ function Resolve-SafeOutputPath {
     return [pscustomobject]@{ AllowedRoot = $allowedRoot; Path = $fullCandidate }
 }
 
+# Heuristics for a pasted real credential. Mirrors the Python validator so a
+# literal key passed anywhere (-SecretName, -ModelId, -ApiBase) is rejected before
+# it can reach a rendered profile or a readiness probe.
+$SecretPrefixes = @('gsk_', 'sk-', 'sk_', 'key-', 'bearer ', 'ghp_', 'gho_', 'xox', 'ocr_')
+
+function Test-LooksLikeRealSecret {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    if ($Value -match '^\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}$') { return $false }
+    $lowered = $Value.Trim().ToLowerInvariant()
+    foreach ($prefix in $SecretPrefixes) {
+        if ($lowered.StartsWith($prefix)) { return $true }
+    }
+    $compact = $Value.Trim()
+    if ($compact.Length -ge 24 -and $compact -match '^[A-Za-z0-9+/=_\-]{24,}$') { return $true }
+    return $false
+}
+
+function Get-PresetDefaults {
+    switch ($Preset) {
+        'generic' { return $null }
+        'openrouter' {
+            return [pscustomobject]@{
+                ApiBase = 'https://openrouter.ai/api/v1'
+                SecretName = 'OPENROUTER_API_KEY'
+                ModelId = $null
+                DisplayName = 'OpenRouter model'
+            }
+        }
+        'zai' {
+            return [pscustomobject]@{
+                ApiBase = 'https://api.z.ai/api/paas/v4'
+                SecretName = 'ZAI_API_KEY'
+                ModelId = 'glm-4.6'
+                DisplayName = 'GLM-4.6 (Z.AI)'
+            }
+        }
+        'groq-legacy' {
+            return [pscustomobject]@{
+                ApiBase = 'https://api.groq.com/openai/v1'
+                SecretName = 'GROQ_API_KEY'
+                ModelId = 'openai/gpt-oss-120b'
+                DisplayName = 'GPT-OSS 120B (Groq legacy)'
+            }
+        }
+    }
+    return $null
+}
+
+function Assert-HttpsRemoteApiBase {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    # A hosted endpoint must be an explicit HTTPS URL with a host and no
+    # userinfo, query string or fragment. A trailing slash is the only path
+    # component allowed (providers expose base URLs like https://host/v1).
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        Write-Failure -Message 'HostedAgent requires an HTTPS apiBase (-ApiBase or a preset).' -Code 5
+    }
+    if ($Value -notmatch '^[A-Za-z][A-Za-z0-9+.\-]*://') {
+        Write-Failure -Message "HostedAgent apiBase must be an absolute HTTPS URL: $Value" -Code 5
+    }
+    try {
+        $uri = [System.Uri]$Value
+    }
+    catch {
+        Write-Failure -Message "HostedAgent apiBase is not a valid URL: $Value" -Code 5
+    }
+    if ($uri.Scheme -ne 'https') {
+        Write-Failure -Message "HostedAgent apiBase must use HTTPS (got $($uri.Scheme)): $Value" -Code 5
+    }
+    if ([string]::IsNullOrEmpty($uri.Host)) {
+        Write-Failure -Message "HostedAgent apiBase must include a host: $Value" -Code 5
+    }
+    if (-not [string]::IsNullOrEmpty($uri.UserInfo)) {
+        Write-Failure -Message "HostedAgent apiBase must not embed credentials: $Value" -Code 5
+    }
+    if (-not [string]::IsNullOrEmpty($uri.Query)) {
+        Write-Failure -Message "HostedAgent apiBase must not contain a query string: $Value" -Code 5
+    }
+    if (-not [string]::IsNullOrEmpty($uri.Fragment)) {
+        Write-Failure -Message "HostedAgent apiBase must not contain a fragment: $Value" -Code 5
+    }
+    # A path component (e.g. /v1 or /api/paas/v4) is legitimate for an
+    # OpenAI-compatible base URL; only userinfo/query/fragment are dangerous.
+}
+
+function Assert-LoopbackHttpApiBase {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        Write-Failure -Message 'LocalAgent requires a loopback apiBase.' -Code 5
+    }
+    if ($Value -notmatch '^[A-Za-z][A-Za-z0-9+.\-]*://') {
+        $Value = "http://$Value"
+    }
+    try {
+        $uri = [System.Uri]$Value
+    }
+    catch {
+        Write-Failure -Message "LocalAgent apiBase is not a valid URL: $Value" -Code 5
+    }
+    $localHosts = @('127.0.0.1', 'localhost', '::1')
+    $hasUnsafeSuffix = -not [string]::IsNullOrEmpty($uri.UserInfo) -or
+        ($uri.AbsolutePath -ne '/') -or
+        -not [string]::IsNullOrEmpty($uri.Query) -or
+        -not [string]::IsNullOrEmpty($uri.Fragment)
+    if ($uri.Scheme -ne 'http' -or $uri.Host -notin $localHosts -or $uri.Port -lt 1 -or $hasUnsafeSuffix) {
+        Write-Failure -Message 'LocalAgent apiBase must be an explicit loopback HTTP endpoint without credentials, path, query or fragment.' -Code 5
+    }
+    return $uri.GetLeftPart([System.UriPartial]::Authority)
+}
+
+function Resolve-HostedSettings {
+    # Merge -ApiBase/-ModelId/-SecretName over the preset defaults, then validate.
+    # The secret NAME only ever becomes a ${{ secrets.NAME }} reference; the key
+    # value is never accepted, printed or stored.
+    $defaults = Get-PresetDefaults
+
+    $apiBase = $ApiBase
+    if ([string]::IsNullOrWhiteSpace($apiBase) -and $null -ne $defaults) { $apiBase = $defaults.ApiBase }
+    $modelId = $ModelId
+    if ([string]::IsNullOrWhiteSpace($modelId) -and $null -ne $defaults) { $modelId = $defaults.ModelId }
+    $secretName = $SecretName
+    if ([string]::IsNullOrWhiteSpace($secretName) -and $null -ne $defaults) { $secretName = $defaults.SecretName }
+
+    if (Test-LooksLikeRealSecret -Value $apiBase) {
+        Write-Failure -Message '-ApiBase looks like a real credential; pass an HTTPS URL only.' -Code 5
+    }
+    if (Test-LooksLikeRealSecret -Value $modelId) {
+        Write-Failure -Message '-ModelId looks like a real credential; pass a model id only.' -Code 5
+    }
+    if (Test-LooksLikeRealSecret -Value $secretName) {
+        Write-Failure -Message '-SecretName looks like a real key value; pass only the secret NAME (never the value).' -Code 5
+    }
+
+    Assert-HttpsRemoteApiBase -Value $apiBase
+    if ([string]::IsNullOrWhiteSpace($modelId)) {
+        Write-Failure -Message 'HostedAgent requires a model id (-ModelId or a preset default).' -Code 5
+    }
+    if ([string]::IsNullOrWhiteSpace($secretName)) {
+        Write-Failure -Message 'HostedAgent requires a secret name (-SecretName or a preset default).' -Code 5
+    }
+    # PowerShell -match is case-insensitive; use -cmatch to enforce UPPER_SNAKE.
+    if (-not ($secretName -cmatch '^[A-Z][A-Z0-9_]*$')) {
+        $upper = $secretName.ToUpperInvariant()
+        if (-not ($upper -cmatch '^[A-Z][A-Z0-9_]*$')) {
+            Write-Failure -Message "Secret name must be UPPER_SNAKE_CASE letters/digits: $secretName" -Code 5
+        }
+        $secretName = $upper
+    }
+
+    $displayName = if (-not [string]::IsNullOrWhiteSpace($ModelId)) { $ModelId } elseif ($null -ne $defaults -and $defaults.DisplayName) { $defaults.DisplayName } else { $modelId }
+    return [pscustomobject]@{
+        ApiBase = $apiBase
+        ModelId = $modelId
+        SecretName = $secretName
+        SecretRef = '${{ secrets.' + $secretName + ' }}'
+        DisplayName = $displayName
+    }
+}
+
 function Get-TemplateFileName {
     param([Parameter(Mandatory = $true)][string]$ProfileName)
     switch ($ProfileName) {
+        'HostedAgent' { return 'hosted-agent.yaml' }
+        'LocalAgent' { return 'local-agent.yaml' }
         'OnlineHybrid' { return 'online-hybrid.yaml' }
         'OfflineLite' { return 'offline-lite.yaml' }
     }
@@ -193,9 +420,38 @@ function Get-TokenMap {
 
     $map = [ordered]@{}
     $map['OLLAMA_API_BASE'] = Get-OllamaApiBase
-    if ($Profile -ne 'OnlineHybrid') {
+
+    if ($Profile -eq 'HostedAgent') {
+        $settings = Resolve-HostedSettings
+        $map['HOSTED_API_BASE'] = $settings.ApiBase
+        $map['HOSTED_MODEL_ID'] = $settings.ModelId
+        $map['HOSTED_SECRET_REF'] = $settings.SecretRef
+        $map['HOSTED_DISPLAY_NAME'] = $settings.DisplayName
+    }
+    elseif ($Profile -eq 'LocalAgent') {
+        $agentBase = if (-not [string]::IsNullOrWhiteSpace($LocalAgentApiBase)) {
+            Assert-LoopbackHttpApiBase -Value $LocalAgentApiBase
+        }
+        else {
+            Get-OllamaApiBase
+        }
+        if ([string]::IsNullOrWhiteSpace($LocalAgentModel)) {
+            Write-Failure -Message 'LocalAgent requires a tool-capable local model (-LocalAgentModel).' -Code 5
+        }
+        if (Test-LooksLikeRealSecret -Value $LocalAgentModel) {
+            Write-Failure -Message '-LocalAgentModel looks like a real credential; pass a model id only.' -Code 5
+        }
+        $map['LOCAL_AGENT_API_BASE'] = $agentBase
+        $map['LOCAL_AGENT_MODEL'] = $LocalAgentModel
+    }
+    elseif ($Profile -eq 'OnlineHybrid') {
+        # Legacy Groq dual-model profile: no new tokens beyond the MCP paths.
+    }
+    else {
+        # OfflineLite: only the Ollama autocomplete endpoint.
         return $map
     }
+
     $map['WORKBENCH_ROOT'] = $Root
     $map['CODE_INDEX_EXE'] = Join-Path $Root 'tools\code-index-mcp\target\release\bsl-indexer.exe'
     $map['SOURCE_MIRROR'] = Join-Path $Root 'generated\index\source-mirror'
@@ -264,7 +520,12 @@ function Invoke-SemanticValidation {
     if (-not (Test-Path -LiteralPath $validator -PathType Leaf)) {
         Write-Failure -Message "Semantic validator not found: $validator" -Code 5
     }
-    $kind = $(if ($Profile -eq 'OnlineHybrid') { 'online' } else { 'offline' })
+    $kind = switch ($Profile) {
+        'HostedAgent' { 'hosted' }
+        'LocalAgent' { 'local' }
+        'OnlineHybrid' { 'online' }
+        'OfflineLite' { 'offline' }
+    }
     $previousBytecode = $env:PYTHONDONTWRITEBYTECODE
     try {
         $env:PYTHONDONTWRITEBYTECODE = '1'
@@ -329,7 +590,10 @@ function Test-DotEnvSecret {
 }
 
 function Get-ContinueSecretStatus {
-    param([Parameter(Mandatory = $true)][string]$Root)
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$SecretName
+    )
 
     $sources = @(
         [pscustomobject]@{ Path = (Join-Path $Root '.env'); Label = 'workspace .env' },
@@ -337,14 +601,15 @@ function Get-ContinueSecretStatus {
         [pscustomobject]@{ Path = (Join-Path $env:USERPROFILE '.continue\.env'); Label = 'global ~/.continue/.env' }
     )
     foreach ($source in $sources) {
-        if (Test-DotEnvSecret -Path $source.Path -Name 'GROQ_API_KEY') {
-            return New-RuntimeStatus -Check 'Continue secret GROQ_API_KEY' -Status "configured ($($source.Label))" -Ready $true
+        if (Test-DotEnvSecret -Path $source.Path -Name $SecretName) {
+            return New-RuntimeStatus -Check "Continue secret $SecretName" -Status "configured ($($source.Label))" -Ready $true
         }
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:GROQ_API_KEY)) {
-        return New-RuntimeStatus -Check 'Continue secret GROQ_API_KEY' -Status 'process environment only (Continue CLI; IDE cannot read it)' -Ready $false
+    $envValue = [System.Environment]::GetEnvironmentVariable($SecretName)
+    if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+        return New-RuntimeStatus -Check "Continue secret $SecretName" -Status 'process environment only (Continue CLI; IDE cannot read it)' -Ready $false
     }
-    return New-RuntimeStatus -Check 'Continue secret GROQ_API_KEY' -Status 'not configured in Continue dotenv sources' -Ready $false
+    return New-RuntimeStatus -Check "Continue secret $SecretName" -Status 'not configured in Continue dotenv sources' -Ready $false
 }
 
 function Get-ContinueClientStatus {
@@ -429,7 +694,7 @@ function Test-OnlineHybridRuntime {
     $codeHomeFound = Test-Path -LiteralPath $codeIndexHome -PathType Container
 
     $results += Get-ContinueClientStatus
-    $results += Get-ContinueSecretStatus -Root $Root
+    $results += Get-ContinueSecretStatus -Root $Root -SecretName 'GROQ_API_KEY'
     $results += New-RuntimeStatus -Check 'code-index executable' -Status ($(if ($codeFound) { 'found' } else { 'not found' })) -Ready $codeFound
     $results += New-RuntimeStatus -Check 'source mirror' -Status ($(if ($sourceFound) { 'found' } else { 'not found' })) -Ready $sourceFound
     $results += New-RuntimeStatus -Check 'CODE_INDEX_HOME' -Status ($(if ($codeHomeFound) { 'found' } else { 'not found' })) -Ready $codeHomeFound
@@ -465,12 +730,82 @@ function Test-OfflineLiteRuntime {
     return $results
 }
 
+function Get-McpReadinessStatuses {
+    # Shared Code/Help MCP readiness block used by the Online, Hosted and Local
+    # agent profiles (each exposes both local MCP servers with readonly Help).
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $results = @()
+    $codeIndexExe = Join-Path $Root 'tools\code-index-mcp\target\release\bsl-indexer.exe'
+    $pythonExe = Join-Path $Root '.venv\Scripts\python.exe'
+    $helpServer = Join-Path $Root 'tools\help-index-mcp\server.py'
+    $helpDb = Join-Path $Root 'generated\help-index\help-index.db'
+    $sourceMirror = Join-Path $Root 'generated\index\source-mirror'
+    $codeIndexHome = Join-Path $Root 'generated\code-index-home'
+
+    $codeFound = Test-Path -LiteralPath $codeIndexExe -PathType Leaf
+    $pythonFound = Test-Path -LiteralPath $pythonExe -PathType Leaf
+    $helpServerFound = Test-Path -LiteralPath $helpServer -PathType Leaf
+    $helpDbFound = Test-Path -LiteralPath $helpDb -PathType Leaf
+    $sourceFound = Test-Path -LiteralPath $sourceMirror -PathType Container
+    $codeHomeFound = Test-Path -LiteralPath $codeIndexHome -PathType Container
+
+    $results += New-RuntimeStatus -Check 'code-index executable' -Status ($(if ($codeFound) { 'found' } else { 'not found' })) -Ready $codeFound
+    $results += New-RuntimeStatus -Check 'source mirror' -Status ($(if ($sourceFound) { 'found' } else { 'not found' })) -Ready $sourceFound
+    $results += New-RuntimeStatus -Check 'CODE_INDEX_HOME' -Status ($(if ($codeHomeFound) { 'found' } else { 'not found' })) -Ready $codeHomeFound
+    $results += New-RuntimeStatus -Check 'Python (.venv)' -Status ($(if ($pythonFound) { 'found' } else { 'not found' })) -Ready $pythonFound
+    $results += New-RuntimeStatus -Check 'Help MCP server' -Status ($(if ($helpServerFound) { 'found' } else { 'not found' })) -Ready $helpServerFound
+    $results += New-RuntimeStatus -Check 'Help DB' -Status ($(if ($helpDbFound) { 'found' } else { 'not found' })) -Ready $helpDbFound
+
+    $probePython = Get-ValidationPython -Root $Root
+    $codeMcpReady = $false
+    if ($codeFound -and $sourceFound -and $codeHomeFound) {
+        $codeMcpReady = Invoke-McpReadinessProbe -Python $probePython -Command $codeIndexExe `
+            -Arguments @('serve', '--path', "onec=$sourceMirror", '--transport', 'stdio') `
+            -Environment @("CODE_INDEX_HOME=$codeIndexHome") -MinimumTools 1
+    }
+    $results += New-RuntimeStatus -Check 'Code MCP handshake/tools-list' -Status ($(if ($codeMcpReady) { 'ready' } else { 'not ready' })) -Ready $codeMcpReady
+
+    $helpMcpReady = $false
+    if ($pythonFound -and $helpServerFound -and $helpDbFound) {
+        $helpMcpReady = Invoke-McpReadinessProbe -Python $probePython -Command $pythonExe `
+            -Arguments @($helpServer) -Environment @('HELP_INDEX_MODE=readonly', "WORKBENCH_ROOT=$Root") `
+            -ExpectedTools @('search_help', 'smart_search_help', 'get_help_topic', 'get_help_tree', 'help_stats', 'list_search_terms') `
+            -ForbiddenTools @('reindex_help', 'export_help_browser') -MinimumTools 6
+    }
+    $results += New-RuntimeStatus -Check 'Help MCP readonly handshake/tools-list' -Status ($(if ($helpMcpReady) { 'ready' } else { 'not ready' })) -Ready $helpMcpReady
+    return $results
+}
+
+function Test-HostedAgentRuntime {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $results = @(Get-ContinueClientStatus)
+    $settings = Resolve-HostedSettings
+    $results += Get-ContinueSecretStatus -Root $Root -SecretName $settings.SecretName
+    $results += Get-McpReadinessStatuses -Root $Root
+    $results += Get-OllamaRuntimeStatus
+    return $results
+}
+
+function Test-LocalAgentRuntime {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $results = @(Get-ContinueClientStatus)
+    # No secret is referenced by the local profile; only local runtime matters.
+    $results += Get-McpReadinessStatuses -Root $Root
+    $results += Get-OllamaRuntimeStatus
+    return $results
+}
+
 function Get-RuntimeStatus {
     param([Parameter(Mandatory = $true)][string]$Root)
-    if ($Profile -eq 'OnlineHybrid') {
-        return Test-OnlineHybridRuntime -Root $Root
+    switch ($Profile) {
+        'HostedAgent' { return Test-HostedAgentRuntime -Root $Root }
+        'LocalAgent' { return Test-LocalAgentRuntime -Root $Root }
+        'OnlineHybrid' { return Test-OnlineHybridRuntime -Root $Root }
+        'OfflineLite' { return Test-OfflineLiteRuntime }
     }
-    return Test-OfflineLiteRuntime
 }
 
 function Write-StatusReport {
