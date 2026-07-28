@@ -23,6 +23,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -56,6 +57,31 @@ def _model_roles(model: dict[str, Any]) -> list[str]:
     if not isinstance(roles, list):
         return [str(roles)]
     return [str(role) for role in roles]
+
+
+def _validate_local_ollama_endpoint(model: dict[str, Any], errors: list[str]) -> None:
+    value = model.get("apiBase")
+    label = f"Ollama model {model.get('model')!r}"
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label} must declare an explicit local apiBase")
+        return
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        errors.append(f"{label} apiBase must be a valid local HTTP URL")
+        return
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        errors.append(f"{label} apiBase must be an explicit loopback HTTP endpoint")
 
 
 def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> None:
@@ -144,6 +170,7 @@ def _online_checks(data: dict[str, Any], errors: list[str]) -> None:
     for model in autocomplete:
         if set(_model_roles(model)) != {"autocomplete"}:
             errors.append(f"Ollama model {OLLAMA_AUTOCOMPLETE_MODEL!r} must have only the autocomplete role")
+        _validate_local_ollama_endpoint(model, errors)
 
     servers = data.get("mcpServers") or []
     server_names = {str(s.get("name")) for s in servers if isinstance(s, dict)}
@@ -183,8 +210,6 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
         errors.append("Offline Lite must not reference any secret")
     if "apikey" in lowered:
         errors.append("Offline Lite must not contain any apiKey")
-    if "apibase" in lowered:
-        errors.append("Offline Lite must not contain a cloud apiBase")
     for url_marker in ("api.groq.com", "api.openai.com", "https://api."):
         if url_marker in lowered:
             errors.append(f"Offline Lite must not contain a cloud API URL ({url_marker})")
@@ -197,6 +222,7 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
         provider = str(model.get("provider")).lower()
         if provider in CLOUD_PROVIDERS or provider != "ollama":
             errors.append(f"Offline Lite allows only the ollama provider, got {provider!r}")
+        _validate_local_ollama_endpoint(model, errors)
         all_roles.update(_model_roles(model))
     if all_roles and all_roles != {"autocomplete"}:
         errors.append(f"Offline Lite roles must be exactly autocomplete, got {sorted(all_roles)}")
@@ -206,12 +232,8 @@ def _offline_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> 
         errors.append("Offline Lite name must state 'autocomplete only'")
 
 
-def validate_profile(config_path: Path, kind: str, repo_root: Path) -> list[str]:
+def validate_profile_text(raw: str, kind: str, repo_root: Path) -> list[str]:
     errors: list[str] = []
-    if not config_path.is_file():
-        return [f"config file not found: {config_path}"]
-
-    raw = config_path.read_text(encoding="utf-8")
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
@@ -243,10 +265,22 @@ def validate_profile(config_path: Path, kind: str, repo_root: Path) -> list[str]
     return errors
 
 
+def validate_profile(config_path: Path, kind: str, repo_root: Path) -> list[str]:
+    if not config_path.is_file():
+        return [f"config file not found: {config_path}"]
+    return validate_profile_text(config_path.read_text(encoding="utf-8"), kind, repo_root)
+
+
 def parse_args() -> argparse.Namespace:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Validate generated Continue Thin Client profiles.")
-    parser.add_argument("--config", type=Path, required=True, help="Generated config.yaml to validate")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--config", type=Path, help="Generated config.yaml to validate")
+    source.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read rendered config.yaml from stdin (semantic validation without a temporary file)",
+    )
     parser.add_argument("--kind", choices=("online", "offline"), required=True, help="Expected profile kind")
     parser.add_argument("--repo-root", type=Path, default=root, help="Workbench root for rules/ignore checks")
     return parser.parse_args()
@@ -254,9 +288,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    errors = validate_profile(args.config.resolve(), args.kind, args.repo_root.resolve())
+    if args.stdin:
+        config_label = "<stdin>"
+        raw = sys.stdin.buffer.read().decode("utf-8")
+        errors = validate_profile_text(raw, args.kind, args.repo_root.resolve())
+    else:
+        config_path = args.config.resolve()
+        config_label = str(config_path)
+        errors = validate_profile(config_path, args.kind, args.repo_root.resolve())
     report = {
-        "config": str(args.config),
+        "config": config_label,
         "kind": args.kind,
         "errors": errors,
         "verdict": "PASS" if not errors else "FAIL",

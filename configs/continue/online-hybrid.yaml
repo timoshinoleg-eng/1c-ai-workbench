@@ -40,6 +40,7 @@ models:
   - name: "Qwen 2.5 Coder 1.5B (Ollama — autocomplete only)"
     provider: ollama
     model: "qwen2.5-coder:1.5b-base"
+    apiBase: '{{OLLAMA_API_BASE}}'
     roles:
       - autocomplete
     autocompleteOptions:
