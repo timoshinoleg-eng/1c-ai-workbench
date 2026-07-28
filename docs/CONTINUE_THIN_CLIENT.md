@@ -259,7 +259,7 @@ Production-модель прошла.
 | PRISM: полностью отсутствующий `НесуществующийМетод` возвращает пустой retrieval | PASS (CI + локально 7/7) |
 | `.continue/rules/1c-workbench.md` и корневой `.continueignore` существуют | PASS (pytest) |
 | BSL example — валидный JSON, диагностика по onSave | PASS (pytest) |
-| Повторный CI на новом head | NOT RUN (до push) |
+| Повторный CI на текущем PR head | PASS (2026-07-28: 11/11 required checks; после любого push проверяется заново) |
 | Continue открыл Online Hybrid и ответил через Groq | FAIL (2026-07-28: профиль загружен; запрос Groq получил HTTP 403 от текущей сети) |
 | Groq `openai/gpt-oss-120b` Production отвечает | FAIL (2026-07-28: HTTP 403 `Access denied`; ключ найден локально, значение не журналируется) |
 | Groq `qwen/qwen3.6-27b` Preview доступен как selectable evaluation model | NOT RUN (основной Groq-запрос заблокирован сетью) |
