@@ -42,26 +42,57 @@
 - `Cursor` / `VS Code`: настройки выбранного расширения или провайдера.
 - `.env`: только локальный файл, не попадающий в архив или Git. В репозитории оставляйте только пример `configs\external-client.env.example`.
 
-## Continue и Groq (Thin Client AI)
+## Continue и ключи (Thin Client AI)
+
+С v1 профили provider-neutral: HostedAgent принимает любого OpenAI-compatible
+провайдера (своего ключа — BYOK, своей модели — BYOM). Groq-профиль Online Hybrid
+сохранён как legacy preset.
+
+### Provider-neutral (HostedAgent) — bring your own key / model
+
+Ключ моделируется только **именем** Continue-секрета. Генератор никогда не принимает,
+не печатает и не встраивает значение ключа.
+
+```powershell
+# Preset с проверенным endpoint и именем секрета (Z.AI)
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
+#   -> ссылка ${{ secrets.ZAI_API_KEY }}, endpoint https://api.z.ai/api/paas/v4
+
+# Свой провайдер: своё имя секрета, endpoint и модель
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent `
+    -ApiBase https://openrouter.ai/api/v1 -ModelId anthropic/claude-3.5-sonnet `
+    -SecretName OPENROUTER_API_KEY
+```
+
+- Не передавайте значение ключа как `-SecretName`/`-ModelId`/`-ApiBase` — генератор
+  отклонит всё, что похоже на реальный ключ (префиксы `gsk_`/`sk-`/... или длинная
+  base64-подобная строка).
+- `-ApiBase` обязан быть HTTPS без userinfo/query/fragment.
+- Для IDE Continue ищет именованный секрет по порядку в workspace `.env`, workspace
+  `.continue/.env`, затем `%USERPROFILE%/.continue/.env`. Process environment
+  доступен только Continue CLI и не удовлетворяет IDE-oriented `-RequireRuntimeReady`.
+- Не вставляйте реальное значение ключа в `configs/continue/*.yaml` или в
+  сгенерированный профиль и не коммитьте `.env`.
+
+### Legacy: Online Hybrid (Groq)
 
 Профиль Online Hybrid использует Groq для chat/edit/apply. Ключ настраивается
 поддерживаемым механизмом секретов/переменных окружения Continue; в YAML-профиле
 хранится только ссылка `${{ secrets.GROQ_API_KEY }}`.
 
-- Не вставляйте реальное значение ключа в `configs/continue/*.yaml` или в
-  сгенерированный профиль.
-- Не коммитьте `.env` и любые файлы с реальным ключом.
 - Для IDE Continue ищет `GROQ_API_KEY` по порядку в workspace `.env`, workspace
   `.continue/.env`, затем `%USERPROFILE%/.continue/.env`. Process environment
   доступен только Continue CLI и сам по себе не удовлетворяет IDE-oriented
   `-RequireRuntimeReady`.
 - Генератор `scripts/28_prepare_continue_profile.ps1` не принимает ключ как
   параметр, не печатает и не встраивает его. `-RequireRuntimeReady` читает только
-  dotenv-строки, чтобы определить наличие непустой записи, и не передаёт значение
-  probe-процессам.
+  dotenv-строки, чтобы определить наличие непустой записи именованного секрета, и не
+  передаёт значение probe-процессам.
 
-Offline Lite ключей не использует вовсе. Подробнее —
-[CONTINUE_THIN_CLIENT.md](CONTINUE_THIN_CLIENT.md).
+### LocalAgent и Offline Lite
+
+LocalAgent и Offline Lite ключей не используют вовсе: только loopback HTTP, без
+облачных URL и секретов. Подробнее — [CONTINUE_THIN_CLIENT.md](CONTINUE_THIN_CLIENT.md).
 
 ## Перед отправкой архива
 
