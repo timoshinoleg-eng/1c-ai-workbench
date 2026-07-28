@@ -58,15 +58,23 @@ def fake_repo(tmp_path: Path) -> Path:
     (target / "configs" / "continue").mkdir(parents=True)
     for template in TEMPLATES.glob("*.yaml"):
         shutil.copy2(template, target / "configs" / "continue" / template.name)
+    rules = target / ".continue" / "rules"
+    rules.mkdir(parents=True)
+    shutil.copy2(ROOT / ".continue" / "rules" / "1c-workbench.md", rules / "1c-workbench.md")
+    shutil.copy2(ROOT / ".continueignore", target / ".continueignore")
     return target
+
+
+def _output(repo: Path, name: str) -> Path:
+    return repo / "generated" / "continue" / name
 
 
 # ── A. Generator ───────────────────────────────────────────────────────────
 
 
 def test_generator_online_hybrid_is_deterministic(fake_repo: Path) -> None:
-    out_a = fake_repo / "a.yaml"
-    out_b = fake_repo / "b.yaml"
+    out_a = _output(fake_repo, "a.yaml")
+    out_b = _output(fake_repo, "b.yaml")
     first = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out_a)])
     second = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out_b)])
     assert first.returncode == 0, first.stderr
@@ -75,8 +83,8 @@ def test_generator_online_hybrid_is_deterministic(fake_repo: Path) -> None:
 
 
 def test_generator_offline_lite_is_deterministic(fake_repo: Path) -> None:
-    out_a = fake_repo / "a.yaml"
-    out_b = fake_repo / "b.yaml"
+    out_a = _output(fake_repo, "a.yaml")
+    out_b = _output(fake_repo, "b.yaml")
     for out in (out_a, out_b):
         result = _run_generator(["-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
         assert result.returncode == 0, result.stderr
@@ -84,14 +92,32 @@ def test_generator_offline_lite_is_deterministic(fake_repo: Path) -> None:
 
 
 def test_generator_check_only_writes_nothing(fake_repo: Path) -> None:
-    out = fake_repo / "must-not-appear.yaml"
+    out = _output(fake_repo, "must-not-appear.yaml")
+    before = {path.relative_to(fake_repo): path.read_bytes() for path in fake_repo.rglob("*") if path.is_file()}
     result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-CheckOnly"])
     assert result.returncode == 0, result.stderr
+    assert "Semantic validation: PASS" in result.stdout
     assert not out.exists()
+    after = {path.relative_to(fake_repo): path.read_bytes() for path in fake_repo.rglob("*") if path.is_file()}
+    assert after == before
+    assert not (fake_repo / "generated").exists()
+
+
+def test_generator_check_only_rejects_semantically_invalid_template(fake_repo: Path) -> None:
+    template = fake_repo / "configs" / "continue" / "online-hybrid.yaml"
+    data = yaml.safe_load(template.read_text(encoding="utf-8"))
+    data["roles"] = ["chat"]
+    template.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    out = _output(fake_repo, "must-not-appear.yaml")
+    result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-CheckOnly"])
+    assert result.returncode != 0
+    assert "top-level 'roles'" in result.stderr
+    assert not out.exists()
+    assert not (fake_repo / "generated").exists()
 
 
 def test_generator_refuses_overwrite_without_force(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     first = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
     assert first.returncode == 0, first.stderr
     blocked = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
@@ -104,7 +130,11 @@ def test_generator_handles_spaces_and_cyrillic(tmp_path: Path) -> None:
     repo = tmp_path / "репо с пробелом"
     (repo / "configs" / "continue").mkdir(parents=True)
     shutil.copy2(TEMPLATES / "online-hybrid.yaml", repo / "configs" / "continue" / "online-hybrid.yaml")
-    out = repo / "out.yaml"
+    rules = repo / ".continue" / "rules"
+    rules.mkdir(parents=True)
+    shutil.copy2(ROOT / ".continue" / "rules" / "1c-workbench.md", rules / "1c-workbench.md")
+    shutil.copy2(ROOT / ".continueignore", repo / ".continueignore")
+    out = _output(repo, "out.yaml")
     result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(repo), "-OutputPath", str(out)])
     assert result.returncode == 0, result.stderr
     data = yaml.safe_load(out.read_text(encoding="utf-8"))
@@ -114,14 +144,39 @@ def test_generator_handles_spaces_and_cyrillic(tmp_path: Path) -> None:
 
 
 def test_generator_leaves_no_unresolved_tokens(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
     assert result.returncode == 0, result.stderr
     assert validator.UNRESOLVED_TOKEN.search(out.read_text(encoding="utf-8")) is None
 
 
+@pytest.mark.parametrize("profile", ["OnlineHybrid", "OfflineLite"])
+def test_generator_pins_continue_to_effective_local_ollama_endpoint(fake_repo: Path, profile: str) -> None:
+    out = _output(fake_repo, f"{profile}.yaml")
+    result = _run_generator(
+        ["-Profile", profile, "-RepoRoot", str(fake_repo), "-OutputPath", str(out)],
+        env_extra={"OLLAMA_HOST": "127.0.0.1:11534"},
+    )
+    assert result.returncode == 0, result.stderr
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    ollama = [model for model in data["models"] if model["provider"] == "ollama"]
+    assert [model["apiBase"] for model in ollama] == ["http://127.0.0.1:11534"]
+
+
+def test_generator_rejects_remote_ollama_endpoint_without_writing(fake_repo: Path) -> None:
+    out = _output(fake_repo, "must-not-appear.yaml")
+    result = _run_generator(
+        ["-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-CheckOnly"],
+        env_extra={"OLLAMA_HOST": "https://ollama.example.invalid:443"},
+    )
+    assert result.returncode != 0
+    assert "loopback HTTP endpoint" in result.stderr
+    assert not out.exists()
+    assert not (fake_repo / "generated").exists()
+
+
 def test_generator_preserves_secret_reference(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
     assert result.returncode == 0, result.stderr
     data = yaml.safe_load(out.read_text(encoding="utf-8"))
@@ -130,10 +185,13 @@ def test_generator_preserves_secret_reference(fake_repo: Path) -> None:
 
 
 def test_generator_does_not_leak_secret_value(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     result = _run_generator(
         ["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady", "-Force"],
-        env_extra={"GROQ_API_KEY": FAKE_SECRET},
+        env_extra={
+            "GROQ_API_KEY": FAKE_SECRET,
+            "USERPROFILE": str(fake_repo.parent / "isolated-user-profile"),
+        },
     )
     # Runtime is incomplete (no indexer/venv/help-db), so the gate fails...
     assert result.returncode != 0
@@ -141,11 +199,25 @@ def test_generator_does_not_leak_secret_value(fake_repo: Path) -> None:
     assert FAKE_SECRET not in result.stdout
     assert FAKE_SECRET not in result.stderr
     assert not out.exists() or FAKE_SECRET not in out.read_text(encoding="utf-8")
-    assert "configured" in result.stdout  # status word only, not the value
+    assert "process environment only" in result.stdout
+
+
+def test_generator_detects_workspace_continue_dotenv_without_printing_value(fake_repo: Path) -> None:
+    secret_file = fake_repo / ".continue" / ".env"
+    secret_file.write_text(f"GROQ_API_KEY={FAKE_SECRET}\n", encoding="utf-8")
+    out = _output(fake_repo, "profile.yaml")
+    result = _run_generator(
+        ["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"]
+    )
+    assert result.returncode != 0
+    assert "configured (workspace .continue/.env)" in result.stdout
+    assert FAKE_SECRET not in result.stdout
+    assert FAKE_SECRET not in result.stderr
+    assert not out.exists()
 
 
 def test_generator_render_only_succeeds_without_runtime(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     # No -RequireRuntimeReady: generation must succeed even though the temp repo
     # has no bsl-indexer.exe, no .venv, no help DB and no GROQ_API_KEY.
     env = {k: v for k, v in os.environ.items() if k != "GROQ_API_KEY"}
@@ -163,10 +235,14 @@ def test_generator_render_only_succeeds_without_runtime(fake_repo: Path) -> None
 
 
 def test_generator_require_runtime_ready_fails_without_runtime(fake_repo: Path) -> None:
-    out = fake_repo / "profile.yaml"
+    out = _output(fake_repo, "profile.yaml")
     result = _run_generator(["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"])
     assert result.returncode != 0
     assert not out.exists()
+    assert "Continue VS Code extension" in result.stdout
+    assert "Code MCP handshake/tools-list" in result.stdout
+    assert "Help MCP readonly handshake/tools-list" in result.stdout
+    assert "Ollama service" in result.stdout
 
 
 def test_generator_require_runtime_ready_offline_fails_without_ollama(fake_repo: Path, tmp_path: Path) -> None:
@@ -174,8 +250,12 @@ def test_generator_require_runtime_ready_offline_fails_without_ollama(fake_repo:
     # not contain ollama so the Offline Lite readiness gate must fail.
     pwsh = shutil.which("powershell")
     assert pwsh is not None
-    out = fake_repo / "offline.yaml"
-    env = {"PATH": str(tmp_path), "SystemRoot": os.environ.get("SystemRoot", r"C:\Windows")}
+    out = _output(fake_repo, "offline.yaml")
+    env = {
+        "PATH": str(Path(sys.executable).parent),
+        "SystemRoot": os.environ.get("SystemRoot", r"C:\Windows"),
+        "USERPROFILE": os.environ.get("USERPROFILE", str(tmp_path)),
+    }
     result = subprocess.run(
         [pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(GENERATOR),
          "-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", str(out), "-RequireRuntimeReady"],
@@ -189,11 +269,65 @@ def test_generator_require_runtime_ready_offline_fails_without_ollama(fake_repo:
     assert not out.exists()
 
 
+def test_generator_rejects_absolute_output_escape_even_with_force(fake_repo: Path, tmp_path: Path) -> None:
+    outside = tmp_path / "outside.yaml"
+    result = _run_generator(
+        ["-Profile", "OnlineHybrid", "-RepoRoot", str(fake_repo), "-OutputPath", str(outside), "-Force"]
+    )
+    assert result.returncode != 0
+    assert "must stay under" in result.stderr
+    assert not outside.exists()
+
+
+def test_generator_rejects_traversal_escape(fake_repo: Path) -> None:
+    escaped = fake_repo / "generated" / "escape.yaml"
+    result = _run_generator(
+        ["-Profile", "OfflineLite", "-RepoRoot", str(fake_repo), "-OutputPath", r"..\escape.yaml", "-Force"]
+    )
+    assert result.returncode != 0
+    assert "must stay under" in result.stderr
+    assert not escaped.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction behavior")
+def test_generator_rejects_reparse_directory_escape_even_with_force(fake_repo: Path, tmp_path: Path) -> None:
+    allowed = fake_repo / "generated" / "continue"
+    allowed.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    junction = allowed / "linked"
+    created = subprocess.run(
+        ["cmd", "/d", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if created.returncode != 0:
+        pytest.skip(f"junction creation unavailable: {created.stderr}")
+    try:
+        result = _run_generator(
+            [
+                "-Profile",
+                "OnlineHybrid",
+                "-RepoRoot",
+                str(fake_repo),
+                "-OutputPath",
+                str(junction / "profile.yaml"),
+                "-Force",
+            ]
+        )
+        assert result.returncode != 0
+        assert "reparse point" in result.stderr
+        assert not (outside / "profile.yaml").exists()
+    finally:
+        os.rmdir(junction)
+
+
 # ── B. Config structure + validator ────────────────────────────────────────
 
 
 def _generated(fake_repo: Path, profile: str, kind: str) -> Path:
-    out = fake_repo / f"{profile}.yaml"
+    out = _output(fake_repo, f"{profile}.yaml")
     result = _run_generator(["-Profile", profile, "-RepoRoot", str(fake_repo), "-OutputPath", str(out)])
     assert result.returncode == 0, result.stderr
     assert validator.validate_profile(out, kind, ROOT) == []
@@ -228,6 +362,7 @@ def test_offline_config_has_no_cloud_mcp_or_embed(fake_repo: Path) -> None:
     providers = {m["provider"] for m in data["models"]}
     assert providers == {"ollama"}
     assert all("apiKey" not in m for m in data["models"])
+    assert all(m["apiBase"].startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:")) for m in data["models"])
     assert "autocomplete only" in data["name"].lower()
 
 
@@ -256,6 +391,7 @@ def test_validator_accepts_shipped_templates_via_generation(fake_repo: Path) -> 
         ("online", lambda d: d["models"][0].update({"roles": ["chat", "embed"]}), "embed"),
         ("offline", lambda d: d.update({"mcpServers": [{"name": "x", "command": "y"}]}), "mcpServers"),
         ("offline", lambda d: d["models"].append({"name": "g", "provider": "groq", "model": "x", "roles": ["chat"]}), "ollama"),
+        ("offline", lambda d: d["models"][0].update({"apiBase": "https://ollama.example.invalid"}), "loopback"),
     ],
 )
 def test_validator_rejects_broken_configs(fake_repo: Path, kind: str, mutator, needle: str) -> None:

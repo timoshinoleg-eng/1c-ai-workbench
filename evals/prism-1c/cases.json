@@ -67,8 +67,15 @@
     },
     {
       "id": "thin-client-similar-name-trap",
-      "kind": "absence",
-      "query": "РассчитатьСумма"
+      "kind": "similar_name_absence",
+      "query": "РассчитатьСумма",
+      "existing_similar_symbol": "РассчитатьСумму",
+      "citation": {
+        "path": "CommonModules/ПилотИндекса/Ext/Module.bsl",
+        "line_start": 2,
+        "line_end": 4,
+        "must_contain": "РассчитатьСумму"
+      }
     },
     {
       "id": "thin-client-absent-symbol",

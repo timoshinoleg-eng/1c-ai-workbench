@@ -72,31 +72,56 @@ def symbol_result(binary: Path, repo: Path, name: str) -> dict[str, Any]:
     return matches[0]
 
 
-def assert_absence(payload: dict[str, Any], query: str) -> None:
-    """Fail if the index fabricates or substitutes an exact symbol for ``query``.
+RETRIEVAL_COLLECTIONS = ("functions", "classes", "variables", "imports")
 
-    Thin Client retrieval must answer "не найдено" for an absent or merely similar
-    name instead of returning a near-miss as if it were an exact match.
-    """
+
+def assert_no_exact_symbol(payload: dict[str, Any], query: str) -> None:
+    """Assert only that the response contains no exact function-name match."""
     exact = [item for item in payload.get("functions", []) if item.get("name") == query]
     if exact:
-        raise AssertionError(
-            f"Expected no exact symbol for {query!r}, but the index returned {len(exact)} "
-            "match(es); a similar name must not substitute an absent symbol"
-        )
+        raise AssertionError(f"Expected no exact symbol for {query!r}, but the index returned {len(exact)} match(es)")
+
+
+def assert_empty_retrieval(payload: dict[str, Any], query: str) -> None:
+    """Require an empty retrieval response, not merely absence of an exact name."""
+    returned = {
+        collection: len(payload.get(collection, [])) for collection in RETRIEVAL_COLLECTIONS if payload.get(collection)
+    }
+    if returned:
+        summary = ", ".join(f"{name}={count}" for name, count in sorted(returned.items()))
+        raise AssertionError(f"Expected no retrieval results for {query!r}, got {summary}")
 
 
 def evaluate_case(binary: Path, repo: Path, case: dict[str, Any]) -> dict[str, Any]:
     kind = case["kind"]
     if kind == "absence":
         payload = symbol_payload(binary, repo, case["query"])
-        assert_absence(payload, case["query"])
+        assert_empty_retrieval(payload, case["query"])
         return {
             "id": case["id"],
             "kind": kind,
             "score": 1,
             "citation": None,
-            "evidence": f"no exact symbol for query {case['query']!r}",
+            "evidence": f"empty retrieval response for absent query {case['query']!r}",
+            "verdict": "PASS",
+        }
+    if kind == "similar_name_absence":
+        similar = symbol_result(binary, repo, case["existing_similar_symbol"])
+        if similar.get("name") != case["existing_similar_symbol"]:
+            raise AssertionError(f"Similar-name fixture symbol mismatch for {case['id']}")
+        citation = assert_citation(repo, case["citation"])
+        payload = symbol_payload(binary, repo, case["query"])
+        assert_no_exact_symbol(payload, case["query"])
+        assert_empty_retrieval(payload, case["query"])
+        return {
+            "id": case["id"],
+            "kind": kind,
+            "score": 1,
+            "citation": citation,
+            "evidence": (
+                f"empty retrieval for distinct query {case['query']!r}; "
+                f"fixture symbol {case['existing_similar_symbol']!r} exists"
+            ),
             "verdict": "PASS",
         }
     if kind in {"symbol", "body"}:
@@ -146,9 +171,10 @@ def render_markdown(report: dict[str, Any]) -> str:
             location = case.get("evidence", "absence")
             rows.append(f"| {case['id']} | {case['kind']} | {case['score']} | {location} |")
         else:
-            rows.append(
-                f"| {case['id']} | {case['kind']} | {case['score']} | " f"`{citation['path']}:{citation['line_start']}` |"
-            )
+            location = f"`{citation['path']}:{citation['line_start']}`"
+            if case.get("evidence"):
+                location += f"; {case['evidence']}"
+            rows.append(f"| {case['id']} | {case['kind']} | {case['score']} | {location} |")
     return (
         "# PRISM-like 1C provider-free evaluation\n\n"
         f"Verdict: **{report['verdict']}**  \n"

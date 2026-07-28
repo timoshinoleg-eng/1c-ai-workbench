@@ -29,29 +29,37 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 prism = importlib.import_module("26_run_prism_eval")
 
 
-# ── assert_absence: exact-match discipline ─────────────────────────────────
+# ── Absence contracts: exact-name vs empty retrieval ────────────────────────
 
 
-def test_assert_absence_passes_when_no_exact_match() -> None:
+def test_assert_no_exact_symbol_has_intentionally_narrow_contract() -> None:
     payload = {"functions": [{"name": "РассчитатьСумму"}]}
-    # A similar-but-different name must not count as an exact hit.
-    prism.assert_absence(payload, "РассчитатьСумма")
+    prism.assert_no_exact_symbol(payload, "РассчитатьСумма")
 
 
-def test_assert_absence_passes_on_empty_index() -> None:
-    prism.assert_absence({"functions": []}, "НесуществующийМетод")
+def test_assert_empty_retrieval_passes_on_empty_index_response() -> None:
+    prism.assert_empty_retrieval(
+        {"functions": [], "classes": [], "variables": [], "imports": []},
+        "НесуществующийМетод",
+    )
 
 
-def test_assert_absence_fails_when_symbol_exists() -> None:
+def test_assert_no_exact_symbol_fails_when_symbol_exists() -> None:
     payload = {"functions": [{"name": "РассчитатьСумму"}]}
-    with pytest.raises(AssertionError, match="similar name must not substitute"):
-        prism.assert_absence(payload, "РассчитатьСумму")
+    with pytest.raises(AssertionError, match="Expected no exact symbol"):
+        prism.assert_no_exact_symbol(payload, "РассчитатьСумму")
 
 
-def test_assert_absence_ignores_other_functions() -> None:
-    payload = {"functions": [{"name": "ВыполнитьПроверку"}, {"name": "РассчитатьСумму"}]}
-    with pytest.raises(AssertionError):
-        prism.assert_absence(payload, "ВыполнитьПроверку")
+def test_assert_empty_retrieval_rejects_near_match_or_other_results() -> None:
+    payload = {"functions": [{"name": "РассчитатьСумму"}]}
+    with pytest.raises(AssertionError, match="Expected no retrieval results"):
+        prism.assert_empty_retrieval(payload, "РассчитатьСумма")
+
+
+def test_assert_empty_retrieval_checks_non_function_collections() -> None:
+    payload = {"classes": [{"name": "ПохожийКласс"}]}
+    with pytest.raises(AssertionError, match="classes=1"):
+        prism.assert_empty_retrieval(payload, "НетТакогоКласса")
 
 
 # ── assert_citation: evidence must be real ─────────────────────────────────
@@ -121,9 +129,17 @@ def test_thin_client_cases_are_present() -> None:
 
 def test_absence_cases_carry_a_query() -> None:
     absence = [case for case in _cases()["cases"] if case["kind"] == "absence"]
-    assert len(absence) >= 2
+    assert absence
     for case in absence:
         assert isinstance(case.get("query"), str) and case["query"]
+
+
+def test_similar_name_case_proves_fixture_symbol_and_empty_distinct_query_contract() -> None:
+    similar = [case for case in _cases()["cases"] if case["kind"] == "similar_name_absence"]
+    assert len(similar) == 1
+    case = similar[0]
+    assert case["query"] != case["existing_similar_symbol"]
+    assert case["citation"]["must_contain"] == case["existing_similar_symbol"]
 
 
 def test_symbol_cases_carry_citation_and_expected_symbol() -> None:
