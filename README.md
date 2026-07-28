@@ -177,13 +177,19 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 
 ## Continue Thin Client AI (гибридные профили)
 
-Для слабого Windows-ноутбука (ориентир — 16 ГБ RAM) доступны два шаблона Continue
-`config.yaml` в `configs/continue/`:
+Для слабого Windows-ноутбука (ориентир — 16 ГБ RAM) доступны четыре шаблона Continue
+`config.yaml` в `configs/continue/`. С v1 профили provider-neutral — «принеси свой
+ключ или свою модель» (BYOK/BYOM); Groq-профиль сохранён как необязательный legacy:
 
-- **Online Hybrid** — облачный Groq (chat/edit/apply, две выбираемые модели
-  `openai/gpt-oss-120b` и `qwen/qwen3.6-27b` Preview) плюс локальные Code Index и
-  Help Index MCP (в read-only режиме) и локальное автодополнение Ollama
-  `qwen2.5-coder:1.5b-base`.
+- **HostedAgent** — одна OpenAI-compatible HTTPS-модель оператора (chat/edit/apply,
+  `tool_use`) плюс локальные Code Index и Help Index MCP (read-only) и локальное
+  автодополнение Ollama. Preset: `generic`, `openrouter`, `zai` (Z.AI
+  `https://api.z.ai/api/paas/v4`, `glm-4.6`), `groq-legacy`. Ключ задаётся только
+  именем Continue-секрета, никогда значением.
+- **LocalAgent** — полностью офлайн: одна локальная tool-capable OpenAI-compatible
+  модель (loopback HTTP) плюс те же MCP и Ollama-автодополнение; без облака и секретов.
+- **Online Hybrid** (legacy) — облачный Groq (две модели `openai/gpt-oss-120b` и
+  `qwen/qwen3.6-27b` Preview) плюс локальные MCP и Ollama-автодополнение.
 - **Offline Lite — autocomplete only** — только локальное автодополнение Ollama;
   без облака, MCP, секретов и локальной chat/agent-модели.
 
@@ -191,12 +197,16 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 [`docs/CONTINUE_THIN_CLIENT.md`](docs/CONTINUE_THIN_CLIENT.md):
 
 ```powershell
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
+.\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b
 .\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid
-python .\scripts\29_validate_continue_profile.py --kind online --config .\generated\continue\online-hybrid.yaml
+python .\scripts\29_validate_continue_profile.py --kind hosted --config .\generated\continue\hosted-agent.yaml
 ```
 
 Генератор пишет только в `generated\continue`, блокирует
-absolute/traversal/reparse escapes даже с `-Force`, а `-CheckOnly` выполняет
+absolute/traversal/reparse escapes даже с `-Force`, принимает только HTTPS для
+удалённого endpoint и только loopback HTTP для локального, отклоняет credentials/
+query/fragment в URL и литеральные значения ключей, а `-CheckOnly` выполняет
 semantic YAML validation через stdin без записи файлов.
 
 Второго RAG, векторной БД и локального embedding pipeline в профилях нет: точные
