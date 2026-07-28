@@ -1,7 +1,7 @@
-# Production Acceptance Matrix
+﻿# Production Acceptance Matrix
 
 > Version: 1.0-draft
-> Status: Design — not implemented
+> Status: Design вЂ” not implemented
 > Companion to: `docs/PRODUCTION_ONBOARDING_SPEC.md`
 > Base commit: `538db97` (Draft PR #3 head)
 
@@ -50,7 +50,7 @@ workbench installation, and no cached artifacts.
 | CW-12 | Authenticode signature is valid (`signtool verify /pa /v`) | Run signtool | MUST | Console output |
 | CW-13 | RFC 3161 timestamp is present and valid | `signtool verify /pa /v` timestamp section | MUST | Console output |
 | CW-14 | SmartScreen behavior is recorded (warning or pass) | Launch on clean VM with SmartScreen enabled | MUST | Screenshot + text |
-| CW-15 | Install and first launch succeed under a Windows user whose profile path contains Cyrillic and spaces | Clean account `C:\Users\Имя с пробелом` | MUST | Console + path string |
+| CW-15 | Install and first launch succeed under a Windows user whose profile path contains Cyrillic and spaces | Clean account `C:\Users\РРјСЏ СЃ РїСЂРѕР±РµР»РѕРј` | MUST | Console + path string |
 
 ---
 
@@ -60,7 +60,7 @@ workbench installation, and no cached artifacts.
 |----|-----------|--------------|------|----------|
 | EV-01 | CPython 3.11 x64 detected when in PATH | `01_check_env.ps1` | MUST | Console |
 | EV-02 | Wrong Python version (3.10, 3.12) rejected with E102 | Install 3.12, run check | MUST | Console with E102 |
-| EV-03 | Unicode path is accepted and preserved exactly | Run from `C:\Пользователь\1c-ai-workbench` | MUST | Console all green |
+| EV-03 | Unicode path is accepted and preserved exactly | Run from `C:\РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ\1c-ai-workbench` | MUST | Console all green |
 | EV-04 | Space-containing path is accepted and quoted safely | Run from `C:\My Tools\1c-ai-workbench` | MUST | Console all green |
 | EV-05 | Read-only `logs/` rejected with E104 | `icacls logs /deny Users:W`, run check | MUST | Console with E104 |
 | EV-06 | Restricted Execution Policy detected with E105 | `Set-ExecutionPolicy Restricted`, run | MUST | Console with E105 |
@@ -79,7 +79,7 @@ workbench installation, and no cached artifacts.
 | ID-04 | Continue absence prints E202 with install command | Run without extension | MUST | Console with E202 |
 | ID-05 | Workbench does NOT auto-install VS Code | Observe: no installer launched | MUST | ProcMon trace |
 | ID-06 | Workbench does NOT auto-install Continue | Observe: no extension install | MUST | ProcMon trace |
-| ID-07 | Continue version supporting schema v1 detected | Check extension version ≥ threshold | SHOULD | Console |
+| ID-07 | Continue version supporting schema v1 detected | Check extension version в‰Ґ threshold | SHOULD | Console |
 
 ---
 
@@ -92,7 +92,7 @@ workbench installation, and no cached artifacts.
 | AM-03 | Corporate mode rejects non-HTTPS URL with E306 | Enter `http://ai.corp/v1` | MUST | Console with E306 |
 | AM-04 | LocalAgent records only a loopback `/v1` endpoint and no secret/provider credential | Select LocalAgent, check state | MUST | JSON content |
 | AM-05 | Offline Lite warns about autocomplete-only limitation; LocalAgent advertises chat/edit/apply + MCP only after readiness passes | Exercise both local submodes | MUST | Console |
-| AM-06 | Mode change overwrites previous mode in state | Switch A→C, check state | MUST | JSON content |
+| AM-06 | Mode change overwrites previous mode in state | Switch Aв†’C, check state | MUST | JSON content |
 | AM-07 | Mode change does not delete existing `.env` | Switch modes, verify `.env` intact | MUST | File check |
 | AM-08 | State file never contains API key value | Grep state file for key patterns | MUST | Grep output (empty) |
 
@@ -162,8 +162,8 @@ workbench installation, and no cached artifacts.
 | FA-03 | AI answer contains code fragment | Inspect response for code block | MUST | Screenshot / text |
 | FA-04 | AI answer contains confidence statement | Inspect response for confidence wording | MUST | Screenshot / text |
 | FA-05 | AI answer contains verification hint | Inspect response for "how to check" | SHOULD | Screenshot / text |
-| FA-06 | Nonexistent symbol returns explicit "Не найдено" | Query `НесуществующийМетодXYZ` | MUST | Screenshot / text |
-| FA-07 | Similar-name substitution without disclosure is a FAIL | Query `РассчитатьСумма` when only `РассчитатьСумму` exists | MUST | Screenshot / text |
+| FA-06 | Nonexistent symbol returns explicit "РќРµ РЅР°Р№РґРµРЅРѕ" | Query `РќРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№РњРµС‚РѕРґXYZ` | MUST | Screenshot / text |
+| FA-07 | Similar-name substitution without disclosure is a FAIL | Query `Р Р°СЃСЃС‡РёС‚Р°С‚СЊРЎСѓРјРјР°` when only `Р Р°СЃСЃС‡РёС‚Р°С‚СЊРЎСѓРјРјСѓ` exists | MUST | Screenshot / text |
 | FA-08 | State transitions to `FIRST_ANSWER` after valid answer | Check state file | MUST | JSON content |
 | FA-09 | Provider HTTP error prints E601 with code | Use invalid key, query | MUST | Console with E601 |
 | FA-10 | Timeout prints E603 | Block network, query | SHOULD | Console with E603 |
@@ -175,7 +175,7 @@ workbench installation, and no cached artifacts.
 | ID | Criterion | Verification | Tier | Evidence |
 |----|-----------|--------------|------|----------|
 | BC-01 | AI produces a diff for a requested BSL change | Ask "add null check to procedure X" | MUST | Screenshot |
-| BC-02 | Diff is displayed BEFORE any file modification | Observe sequence: diff shown → prompt → apply | MUST | Screen recording |
+| BC-02 | Diff is displayed BEFORE any file modification | Observe sequence: diff shown в†’ prompt в†’ apply | MUST | Screen recording |
 | BC-03 | Diff shows file path, line range, removed/added lines | Inspect diff rendering | MUST | Screenshot |
 | BC-04 | Operator can reject the change | Press reject / `n` | MUST | State returns to `FIRST_ANSWER` |
 | BC-05 | Rejection does NOT modify any file | Check file hash before/after reject | MUST | Hash comparison |
@@ -361,13 +361,49 @@ workbench installation, and no cached artifacts.
 
 ---
 
+## 20b. Continue config preflight acceptance (CC)
+
+These criteria verify `scripts/37_diagnose_continue_config.ps1` — the focused
+read-only Continue 2.0 configuration preflight. Future `scripts/36_diagnose.ps1`
+(unified orchestrator) invokes script 37 as a sub-component.
+
+| ID | Criterion | Verification | Tier | Evidence |
+|----|-----------|--------------|------|----------|
+| CC-01 | Markdown config.json + no YAML → FAIL/exit 1 | Synthetic test | MUST | pytest |
+| CC-02 | UTF-8 BOM + whitespace + Markdown # → FAIL | Synthetic test | MUST | pytest |
+| CC-03 | Valid non-empty YAML + invalid legacy JSON → WARN/exit 0 | Synthetic test | MUST | pytest |
+| CC-04 | Invalid non-empty YAML → FAIL | Synthetic test | MUST | pytest |
+| CC-05 | Empty YAML → FAIL with auto-overwrite-risk code E205 | Synthetic test | MUST | pytest |
+| CC-06 | Whitespace-only YAML → FAIL | Synthetic test | MUST | pytest |
+| CC-07 | Both files absent → first-run WARN/exit 0 | Synthetic test | MUST | pytest |
+| CC-08 | Valid legacy JSON → lexical PASS | Synthetic test | MUST | pytest |
+| CC-09 | Valid JSONC with line comments → PASS | Synthetic test | MUST | pytest |
+| CC-10 | Valid JSONC with block comments → PASS | Synthetic test | MUST | pytest |
+| CC-11 | JSON string containing //, /*, # not misclassified | Synthetic test | MUST | pytest |
+| CC-12 | Continue extension missing → E202 FAIL | Synthetic test | MUST | pytest |
+| CC-13 | Bundled schema missing → E208 WARN | Synthetic test | MUST | pytest |
+| CC-14 | Unsupported/unverified version → E210 WARN | Synthetic test | MUST | pytest |
+| CC-15 | Unicode and spaces in -ContinueHome/-ExtensionRoot | Synthetic test | MUST | pytest |
+| CC-16 | -Json produces exactly one parseable JSON object | Synthetic test | MUST | pytest |
+| CC-17 | Exact exit-code contract (0/1/2) | Synthetic test | MUST | pytest |
+| CC-18 | Secret canaries never in stdout/stderr/JSON | Synthetic test | MUST | pytest |
+| CC-19 | .env canary never read or hashed | Synthetic test | MUST | pytest |
+| CC-20 | No writes: same inventory, bytes, mtimes, no new files | Synthetic test | MUST | pytest |
+| CC-21 | Script does not invoke Continue helpers that create/rewrite | Synthetic test | MUST | pytest |
+| CC-22 | Existing four repository Continue profiles unchanged | pytest assertion | MUST | pytest |
+| CC-23 | Script parses without error in Windows PowerShell 5.1 | PSParser tokenize | MUST | Manual/CI |
+| CC-24 | PSScriptAnalyzer errors-only: zero errors | Invoke-ScriptAnalyzer | MUST | Console |
+| CC-25 | Runtime checks (chat/autocomplete/MCP) always NOT_RUN | JSON output inspection | MUST | pytest |
+
+---
+
 ## 21. Acceptance sign-off
 
 | Role | Signs for | Date | Status |
 |------|-----------|------|--------|
-| Implementer | All MUST criteria pass | — | — |
-| Reviewer (Codex) | Architecture and integration review | — | — |
-| Maintainer | Release approval | — | — |
+| Implementer | All MUST criteria pass | вЂ” | вЂ” |
+| Reviewer (Codex) | Architecture and integration review | вЂ” | вЂ” |
+| Maintainer | Release approval | вЂ” | вЂ” |
 
 No production release is approved while any MUST criterion is `FAIL` or
 `NOT RUN` without a documented `WAIVED` justification accepted by the

@@ -1,7 +1,7 @@
-# Production Onboarding Specification
+﻿# Production Onboarding Specification
 
 > Version: 1.0-draft
-> Status: Design — not implemented
+> Status: Design вЂ” not implemented
 > Base commit: `538db97` (Draft PR #3 head)
 > Scope: user-facing production journey from clean Windows to first evidence-based AI answer
 
@@ -30,37 +30,37 @@ signing, or user settings.
 ## 2. User journey overview
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│  Phase 1: INSTALL        Phase 2: CONFIGURE       Phase 3: USE     │
-│                                                                     │
-│  ┌──────────┐   ┌──────────────┐   ┌───────────┐   ┌────────────┐  │
-│  │ Clean    │──▶│ VS Code +    │──▶│ AI mode   │──▶│ Index 1C   │  │
-│  │ Windows  │   │ Continue     │   │ selection │   │ dump/repo  │  │
-│  └──────────┘   └──────────────┘   └───────────┘   └────────────┘  │
-│       │               │                  │                │         │
-│       ▼               ▼                  ▼                ▼         │
-│  ┌──────────┐   ┌──────────────┐   ┌───────────┐   ┌────────────┐  │
-│  │ Workbench│   │ Key storage  │   │ MCP verify│──▶│ First AI   │  │
-│  │ installer│   │ (BYOK)       │   │ Code+Help │   │ answer     │  │
-│  └──────────┘   └──────────────┘   └───────────┘   └────────────┘  │
-│                                                        │            │
-│                                                        ▼            │
-│                                                  ┌────────────┐    │
-│                                                  │ BSL change  │    │
-│                                                  │ proposal    │    │
-│                                                  └────────────┘    │
-│                                                        │            │
-│                                                        ▼            │
-│                                                  ┌────────────┐    │
-│                                                  │ Diff review │    │
-│                                                  │ + confirm   │    │
-│                                                  └────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+в”‚  Phase 1: INSTALL        Phase 2: CONFIGURE       Phase 3: USE     в”‚
+в”‚                                                                     в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚
+в”‚  в”‚ Clean    в”‚в”Ђв”Ђв–¶в”‚ VS Code +    в”‚в”Ђв”Ђв–¶в”‚ AI mode   в”‚в”Ђв”Ђв–¶в”‚ Index 1C   в”‚  в”‚
+в”‚  в”‚ Windows  в”‚   в”‚ Continue     в”‚   в”‚ selection в”‚   в”‚ dump/repo  в”‚  в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚
+в”‚       в”‚               в”‚                  в”‚                в”‚         в”‚
+в”‚       в–ј               в–ј                  в–ј                в–ј         в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚
+в”‚  в”‚ Workbenchв”‚   в”‚ Key storage  в”‚   в”‚ MCP verifyв”‚в”Ђв”Ђв–¶в”‚ First AI   в”‚  в”‚
+в”‚  в”‚ installerв”‚   в”‚ (BYOK)       в”‚   в”‚ Code+Help в”‚   в”‚ answer     в”‚  в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚
+в”‚                                                        в”‚            в”‚
+в”‚                                                        в–ј            в”‚
+в”‚                                                  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ    в”‚
+в”‚                                                  в”‚ BSL change  в”‚    в”‚
+в”‚                                                  в”‚ proposal    в”‚    в”‚
+в”‚                                                  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”    в”‚
+в”‚                                                        в”‚            в”‚
+в”‚                                                        в–ј            в”‚
+в”‚                                                  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ    в”‚
+в”‚                                                  в”‚ Diff review в”‚    в”‚
+в”‚                                                  в”‚ + confirm   в”‚    в”‚
+в”‚                                                  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”    в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 ```
 
 ---
 
-## 3. Phase 1 — Installation on clean Windows
+## 3. Phase 1 вЂ” Installation on clean Windows
 
 ### 3.1 Prerequisites (operator verifies before running installer)
 
@@ -71,7 +71,7 @@ signing, or user settings.
 | Disk | 2 GB free for workbench + index | Explorer |
 | CPython | 3.11.x 64-bit | `python --version` |
 | PowerShell | 5.1+ (ships with Windows) | `$PSVersionTable` |
-| Network | Required only for online AI mode; offline mode needs none | — |
+| Network | Required only for online AI mode; offline mode needs none | вЂ” |
 
 ### 3.2 Installer behavior
 
@@ -116,7 +116,7 @@ and halts. The operator fixes the issue and reruns.
 
 ---
 
-## 4. Phase 2 — VS Code and Continue
+## 4. Phase 2 вЂ” VS Code and Continue
 
 ### 4.1 VS Code detection
 
@@ -167,12 +167,12 @@ modify `~/.continue/` or any global Continue configuration.
 
 ---
 
-## 5. Phase 3 — AI mode selection
+## 5. Phase 3 вЂ” AI mode selection
 
 The operator chooses exactly one AI mode. The choice is recorded in
 `generated/onboarding-state.json` (see Section 8 state machine).
 
-### 5.1 Mode A — Own cloud AI (BYOK)
+### 5.1 Mode A вЂ” Own cloud AI (BYOK)
 
 | Property | Value |
 |----------|-------|
@@ -190,7 +190,7 @@ The onboarding assistant:
    printed, logged, or transmitted).
 4. Does NOT accept, store, or echo the key value.
 
-### 5.2 Mode B — Corporate OpenAI-compatible endpoint
+### 5.2 Mode B вЂ” Corporate OpenAI-compatible endpoint
 
 | Property | Value |
 |----------|-------|
@@ -209,7 +209,7 @@ Additional steps:
    confirm internally.
 4. Records endpoint URL (not key) in onboarding state.
 
-### 5.3 Mode C — Local model only
+### 5.3 Mode C вЂ” Local model only
 
 | Property | Value |
 |----------|-------|
@@ -262,7 +262,7 @@ Per Continue documentation, secrets resolve in order:
 
 The onboarding assistant prints all three paths and lets the operator choose.
 It does not create the parent directory or `.env` file and never edits a
-global Continue directory — the operator creates and edits the file directly.
+global Continue directory вЂ” the operator creates and edits the file directly.
 
 ### 6.3 Key revocation guidance
 
@@ -271,7 +271,7 @@ After a pilot or key compromise:
 1. Revoke the key at the provider dashboard.
 2. Delete or empty the dotenv line.
 3. Rerun `.\scripts\06_healthcheck.ps1` to confirm the workbench still
-   functions for local search (it does — key absence only blocks AI mode).
+   functions for local search (it does вЂ” key absence only blocks AI mode).
 
 ---
 
@@ -281,7 +281,7 @@ After a pilot or key compromise:
 
 | Source | Description | Path convention |
 |--------|-------------|-----------------|
-| Configuration dump (XML/BSL) | Exported via 1C Designer → "Save configuration to files" | `C:\1c-ai-client\dump` |
+| Configuration dump (XML/BSL) | Exported via 1C Designer в†’ "Save configuration to files" | `C:\1c-ai-client\dump` |
 | Git repository with EDT export | EDT project exported to XML | Any local path |
 | Demo fixture | Committed test fixture in the repository | `tests/fixtures/` |
 
@@ -328,35 +328,35 @@ machine. State is persisted in `generated/onboarding-state.json`.
 ### 8.1 States
 
 ```text
-                    ┌─────────────────────────────────────────────────┐
-                    │                                                 │
-                    ▼                                                 │
-┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐ │
-│ FRESH   │──▶│ ENV_OK  │──▶│ IDE_OK  │──▶│ MODE_SET│──▶│ KEY_OK  │ │
-└─────────┘   └─────────┘   └─────────┘   └─────────┘   └─────────┘ │
-                    │             │             │             │       │
-                    ▼             ▼             ▼             ▼       │
-              ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐ │
-              │ ENV_FAIL│   │ IDE_MISS│   │ MODE_   │   │ KEY_    │ │
-              │         │   │         │   │ MISSING │   │ MISSING │ │
-              └─────────┘   └─────────┘   └─────────┘   └─────────┘ │
-                                                                 │   │
-                                                                 ▼   │
-┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐ │
-│ COMPLETE│◀──│ FIRST_  │◀──│ MCP_OK  │◀──│INDEX_OK │◀──│SOURCE_OK│ │
-└─────────┘   │ ANSWER  │   └─────────┘   └─────────┘   └─────────┘ │
-                    │                                                 │
-                    ▼                                                 │
-              ┌─────────┐                                            │
-              │ CHANGE_ │────────────────────────────────────────────┘
-              │ PROPOSED│  (operator rejects → back to FIRST_ANSWER)
-              └─────────┘
-                    │
-                    ▼
-              ┌─────────┐
-              │ CHANGE_ │
-              │ APPLIED │
-              └─────────┘
+                    в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+                    в”‚                                                 в”‚
+                    в–ј                                                 в”‚
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ в”‚
+в”‚ FRESH   в”‚в”Ђв”Ђв–¶в”‚ ENV_OK  в”‚в”Ђв”Ђв–¶в”‚ IDE_OK  в”‚в”Ђв”Ђв–¶в”‚ MODE_SETв”‚в”Ђв”Ђв–¶в”‚ KEY_OK  в”‚ в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв” в”‚
+                    в”‚             в”‚             в”‚             в”‚       в”‚
+                    в–ј             в–ј             в–ј             в–ј       в”‚
+              в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ в”‚
+              в”‚ ENV_FAILв”‚   в”‚ IDE_MISSв”‚   в”‚ MODE_   в”‚   в”‚ KEY_    в”‚ в”‚
+              в”‚         в”‚   в”‚         в”‚   в”‚ MISSING в”‚   в”‚ MISSING в”‚ в”‚
+              в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв” в”‚
+                                                                 в”‚   в”‚
+                                                                 в–ј   в”‚
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ   в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ в”‚
+в”‚ COMPLETEв”‚в—Ђв”Ђв”Ђв”‚ FIRST_  в”‚в—Ђв”Ђв”Ђв”‚ MCP_OK  в”‚в—Ђв”Ђв”Ђв”‚INDEX_OK в”‚в—Ђв”Ђв”Ђв”‚SOURCE_OKв”‚ в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в”‚ ANSWER  в”‚   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”   в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв” в”‚
+                    в”‚                                                 в”‚
+                    в–ј                                                 в”‚
+              в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ                                            в”‚
+              в”‚ CHANGE_ в”‚в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
+              в”‚ PROPOSEDв”‚  (operator rejects в†’ back to FIRST_ANSWER)
+              в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
+                    в”‚
+                    в–ј
+              в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+              в”‚ CHANGE_ в”‚
+              в”‚ APPLIED в”‚
+              в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 ```
 
 ### 8.2 State definitions
@@ -434,69 +434,69 @@ ticket.
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E101 | Python не найден. Установите CPython 3.11 x64. | Python not found. Install CPython 3.11 x64. | CPython not in PATH | Install from python.org, restart terminal |
-| E102 | Версия Python не поддерживается: {ver}. Нужна 3.11.x. | Unsupported Python version: {ver}. Need 3.11.x. | Wrong Python version | Install 3.11.x, check PATH order |
-| E103 | Путь не удалось безопасно разрешить: {path} | Path could not be resolved safely: {path} | Invalid, inaccessible, or escaping path | Select an accessible local path and retry |
-| E104 | Папка logs недоступна для записи. | Logs directory is not writable. | Permissions / antivirus | Grant Modify permission; check antivirus exclusions |
-| E105 | PowerShell Execution Policy блокирует скрипты. | PowerShell Execution Policy blocks scripts. | Restricted policy | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
-| E106 | Недостаточно места на диске: {free} МБ (нужно {need} МБ). | Insufficient disk space: {free} MB (need {need} MB). | Disk full | Free space or choose another drive |
+| E101 | Python РЅРµ РЅР°Р№РґРµРЅ. РЈСЃС‚Р°РЅРѕРІРёС‚Рµ CPython 3.11 x64. | Python not found. Install CPython 3.11 x64. | CPython not in PATH | Install from python.org, restart terminal |
+| E102 | Р’РµСЂСЃРёСЏ Python РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ: {ver}. РќСѓР¶РЅР° 3.11.x. | Unsupported Python version: {ver}. Need 3.11.x. | Wrong Python version | Install 3.11.x, check PATH order |
+| E103 | РџСѓС‚СЊ РЅРµ СѓРґР°Р»РѕСЃСЊ Р±РµР·РѕРїР°СЃРЅРѕ СЂР°Р·СЂРµС€РёС‚СЊ: {path} | Path could not be resolved safely: {path} | Invalid, inaccessible, or escaping path | Select an accessible local path and retry |
+| E104 | РџР°РїРєР° logs РЅРµРґРѕСЃС‚СѓРїРЅР° РґР»СЏ Р·Р°РїРёСЃРё. | Logs directory is not writable. | Permissions / antivirus | Grant Modify permission; check antivirus exclusions |
+| E105 | PowerShell Execution Policy Р±Р»РѕРєРёСЂСѓРµС‚ СЃРєСЂРёРїС‚С‹. | PowerShell Execution Policy blocks scripts. | Restricted policy | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
+| E106 | РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РјРµСЃС‚Р° РЅР° РґРёСЃРєРµ: {free} РњР‘ (РЅСѓР¶РЅРѕ {need} РњР‘). | Insufficient disk space: {free} MB (need {need} MB). | Disk full | Free space or choose another drive |
 
 ### 9.2 IDE errors (E2xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E201 | VS Code не найден. Установите вручную с code.visualstudio.com. | VS Code not found. Install manually from code.visualstudio.com. | VS Code not installed | Download and install |
-| E202 | Расширение Continue не установлено. | Continue extension not installed. | Extension missing | `code --install-extension Continue.continue` |
-| E203 | Версия Continue не поддерживает schema v1. Обновите расширение. | Continue version does not support schema v1. Update the extension. | Outdated Continue | Update via VS Code Extensions panel |
+| E201 | VS Code РЅРµ РЅР°Р№РґРµРЅ. РЈСЃС‚Р°РЅРѕРІРёС‚Рµ РІСЂСѓС‡РЅСѓСЋ СЃ code.visualstudio.com. | VS Code not found. Install manually from code.visualstudio.com. | VS Code not installed | Download and install |
+| E202 | Р Р°СЃС€РёСЂРµРЅРёРµ Continue РЅРµ СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ. | Continue extension not installed. | Extension missing | `code --install-extension Continue.continue` |
+| E203 | Р’РµСЂСЃРёСЏ Continue РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ schema v1. РћР±РЅРѕРІРёС‚Рµ СЂР°СЃС€РёСЂРµРЅРёРµ. | Continue version does not support schema v1. Update the extension. | Outdated Continue | Update via VS Code Extensions panel |
 
 ### 9.3 AI mode / key errors (E3xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E301 | API-ключ не найден. Создайте файл {path} и добавьте строку {VAR}=ваш_ключ. | API key not found. Create {path} and add line {VAR}=your_key. | Dotenv missing or empty | Create .env with key; do NOT commit |
-| E302 | Ключ пустой. Строка {VAR}= найдена, но значение отсутствует. | Key is empty. Line {VAR}= found but value is missing. | Empty dotenv value | Add key value after `=` |
-| E303 | Ollama не запущена. Установите и запустите Ollama. | Ollama is not running. Install and start Ollama. | Service not running | `ollama serve` or start Ollama app |
-| E304 | Модель {model} не найдена. Выполните: ollama pull {model} | Model {model} not found. Run: ollama pull {model} | Model not pulled | Pull the exact model tag |
-| E305 | OLLAMA_HOST указывает на удалённый адрес: {host}. Только loopback разрешён. | OLLAMA_HOST points to remote address: {host}. Only loopback allowed. | Non-loopback Ollama | Set to 127.0.0.1 or localhost |
-| E306 | URL корпоративного endpoint не является HTTPS: {url} | Corporate endpoint URL is not HTTPS: {url} | HTTP endpoint | Use HTTPS or confirm local proxy |
-| E307 | Локальный Agent endpoint должен быть loopback OpenAI-compatible URL с `/v1`: {url} | Local Agent endpoint must be a loopback OpenAI-compatible URL ending in `/v1`: {url} | Wrong host, scheme, or API path | Use `http://127.0.0.1:<port>/v1` and verify `/v1/models` |
+| E301 | API-РєР»СЋС‡ РЅРµ РЅР°Р№РґРµРЅ. РЎРѕР·РґР°Р№С‚Рµ С„Р°Р№Р» {path} Рё РґРѕР±Р°РІСЊС‚Рµ СЃС‚СЂРѕРєСѓ {VAR}=РІР°С€_РєР»СЋС‡. | API key not found. Create {path} and add line {VAR}=your_key. | Dotenv missing or empty | Create .env with key; do NOT commit |
+| E302 | РљР»СЋС‡ РїСѓСЃС‚РѕР№. РЎС‚СЂРѕРєР° {VAR}= РЅР°Р№РґРµРЅР°, РЅРѕ Р·РЅР°С‡РµРЅРёРµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚. | Key is empty. Line {VAR}= found but value is missing. | Empty dotenv value | Add key value after `=` |
+| E303 | Ollama РЅРµ Р·Р°РїСѓС‰РµРЅР°. РЈСЃС‚Р°РЅРѕРІРёС‚Рµ Рё Р·Р°РїСѓСЃС‚РёС‚Рµ Ollama. | Ollama is not running. Install and start Ollama. | Service not running | `ollama serve` or start Ollama app |
+| E304 | РњРѕРґРµР»СЊ {model} РЅРµ РЅР°Р№РґРµРЅР°. Р’С‹РїРѕР»РЅРёС‚Рµ: ollama pull {model} | Model {model} not found. Run: ollama pull {model} | Model not pulled | Pull the exact model tag |
+| E305 | OLLAMA_HOST СѓРєР°Р·С‹РІР°РµС‚ РЅР° СѓРґР°Р»С‘РЅРЅС‹Р№ Р°РґСЂРµСЃ: {host}. РўРѕР»СЊРєРѕ loopback СЂР°Р·СЂРµС€С‘РЅ. | OLLAMA_HOST points to remote address: {host}. Only loopback allowed. | Non-loopback Ollama | Set to 127.0.0.1 or localhost |
+| E306 | URL РєРѕСЂРїРѕСЂР°С‚РёРІРЅРѕРіРѕ endpoint РЅРµ СЏРІР»СЏРµС‚СЃСЏ HTTPS: {url} | Corporate endpoint URL is not HTTPS: {url} | HTTP endpoint | Use HTTPS or confirm local proxy |
+| E307 | Р›РѕРєР°Р»СЊРЅС‹Р№ Agent endpoint РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ loopback OpenAI-compatible URL СЃ `/v1`: {url} | Local Agent endpoint must be a loopback OpenAI-compatible URL ending in `/v1`: {url} | Wrong host, scheme, or API path | Use `http://127.0.0.1:<port>/v1` and verify `/v1/models` |
 
 ### 9.4 Source / index errors (E4xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E401 | Папка выгрузки не найдена: {path} | Dump folder not found: {path} | Wrong path | Check path, re-export from 1C Designer |
-| E402 | Configuration.xml не найден в выгрузке. | Configuration.xml not found in dump. | Incomplete export | Re-export: Designer → Save configuration to files |
-| E403 | Выгрузка пуста (0 файлов). | Dump is empty (0 files). | Empty directory | Place actual export files |
-| E404 | Индекс не создан. Запустите индексацию. | Index not created. Run indexing. | First run / index deleted | `.\scripts\04_index_1c_dump.ps1 -Force` |
-| E405 | Индекс повреждён или несовместим. Пересоздайте с -Force. | Index corrupted or incompatible. Rebuild with -Force. | Version mismatch / corruption | Delete `generated/index/`, reindex |
-| E406 | Вложенная ссылка выходит за границы выгрузки: {path}. | Nested link escapes the resolved source root: {path}. | Reparse-point traversal in source | Remove the escaping link or choose a contained source |
+| E401 | РџР°РїРєР° РІС‹РіСЂСѓР·РєРё РЅРµ РЅР°Р№РґРµРЅР°: {path} | Dump folder not found: {path} | Wrong path | Check path, re-export from 1C Designer |
+| E402 | Configuration.xml РЅРµ РЅР°Р№РґРµРЅ РІ РІС‹РіСЂСѓР·РєРµ. | Configuration.xml not found in dump. | Incomplete export | Re-export: Designer в†’ Save configuration to files |
+| E403 | Р’С‹РіСЂСѓР·РєР° РїСѓСЃС‚Р° (0 С„Р°Р№Р»РѕРІ). | Dump is empty (0 files). | Empty directory | Place actual export files |
+| E404 | РРЅРґРµРєСЃ РЅРµ СЃРѕР·РґР°РЅ. Р—Р°РїСѓСЃС‚РёС‚Рµ РёРЅРґРµРєСЃР°С†РёСЋ. | Index not created. Run indexing. | First run / index deleted | `.\scripts\04_index_1c_dump.ps1 -Force` |
+| E405 | РРЅРґРµРєСЃ РїРѕРІСЂРµР¶РґС‘РЅ РёР»Рё РЅРµСЃРѕРІРјРµСЃС‚РёРј. РџРµСЂРµСЃРѕР·РґР°Р№С‚Рµ СЃ -Force. | Index corrupted or incompatible. Rebuild with -Force. | Version mismatch / corruption | Delete `generated/index/`, reindex |
+| E406 | Р’Р»РѕР¶РµРЅРЅР°СЏ СЃСЃС‹Р»РєР° РІС‹С…РѕРґРёС‚ Р·Р° РіСЂР°РЅРёС†С‹ РІС‹РіСЂСѓР·РєРё: {path}. | Nested link escapes the resolved source root: {path}. | Reparse-point traversal in source | Remove the escaping link or choose a contained source |
 
 ### 9.5 MCP errors (E5xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E501 | bsl-indexer.exe не найден. Запустите setup.ps1 или соберите из исходников. | bsl-indexer.exe not found. Run setup.ps1 or build from source. | Binary missing | `.\scripts\setup.ps1` or `.\scripts\03_build_bsl_indexer.ps1` |
-| E502 | Code MCP не отвечает на initialize. | Code MCP does not respond to initialize. | Binary crash / wrong path | Check `logs/`, verify binary runs: `bsl-indexer --help` |
-| E503 | Help MCP не отвечает. Проверьте Python venv и HELP_INDEX_MODE. | Help MCP does not respond. Check Python venv and HELP_INDEX_MODE. | venv missing / wrong mode | Recreate venv, set `HELP_INDEX_MODE=readonly` |
-| E504 | Help MCP база данных отсутствует. Сначала проиндексируйте справку. | Help MCP database missing. Index the help first. | No .hbk indexed | Run help indexing per docs |
-| E505 | MCP tools/list вернул пустой список. | MCP tools/list returned empty list. | Index empty / binary mismatch | Reindex, verify binary version matches index |
+| E501 | bsl-indexer.exe РЅРµ РЅР°Р№РґРµРЅ. Р—Р°РїСѓСЃС‚РёС‚Рµ setup.ps1 РёР»Рё СЃРѕР±РµСЂРёС‚Рµ РёР· РёСЃС…РѕРґРЅРёРєРѕРІ. | bsl-indexer.exe not found. Run setup.ps1 or build from source. | Binary missing | `.\scripts\setup.ps1` or `.\scripts\03_build_bsl_indexer.ps1` |
+| E502 | Code MCP РЅРµ РѕС‚РІРµС‡Р°РµС‚ РЅР° initialize. | Code MCP does not respond to initialize. | Binary crash / wrong path | Check `logs/`, verify binary runs: `bsl-indexer --help` |
+| E503 | Help MCP РЅРµ РѕС‚РІРµС‡Р°РµС‚. РџСЂРѕРІРµСЂСЊС‚Рµ Python venv Рё HELP_INDEX_MODE. | Help MCP does not respond. Check Python venv and HELP_INDEX_MODE. | venv missing / wrong mode | Recreate venv, set `HELP_INDEX_MODE=readonly` |
+| E504 | Help MCP Р±Р°Р·Р° РґР°РЅРЅС‹С… РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚. РЎРЅР°С‡Р°Р»Р° РїСЂРѕРёРЅРґРµРєСЃРёСЂСѓР№С‚Рµ СЃРїСЂР°РІРєСѓ. | Help MCP database missing. Index the help first. | No .hbk indexed | Run help indexing per docs |
+| E505 | MCP tools/list РІРµСЂРЅСѓР» РїСѓСЃС‚РѕР№ СЃРїРёСЃРѕРє. | MCP tools/list returned empty list. | Index empty / binary mismatch | Reindex, verify binary version matches index |
 
 ### 9.6 AI answer errors (E6xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E601 | AI-провайдер вернул HTTP {code}. Проверьте ключ и доступность модели. | AI provider returned HTTP {code}. Check key and model availability. | Auth / quota / network | Verify key, check provider status page |
-| E602 | AI ответ не содержит evidence (файл/строка). Ответ отклонён. | AI answer lacks evidence (file/line). Answer rejected. | Model hallucination | Rephrase query; check MCP connection |
-| E603 | Тайм-аут ответа AI ({sec} сек). Проверьте сеть. | AI response timeout ({sec} s). Check network. | Network / provider slow | Retry; check firewall/proxy |
+| E601 | AI-РїСЂРѕРІР°Р№РґРµСЂ РІРµСЂРЅСѓР» HTTP {code}. РџСЂРѕРІРµСЂСЊС‚Рµ РєР»СЋС‡ Рё РґРѕСЃС‚СѓРїРЅРѕСЃС‚СЊ РјРѕРґРµР»Рё. | AI provider returned HTTP {code}. Check key and model availability. | Auth / quota / network | Verify key, check provider status page |
+| E602 | AI РѕС‚РІРµС‚ РЅРµ СЃРѕРґРµСЂР¶РёС‚ evidence (С„Р°Р№Р»/СЃС‚СЂРѕРєР°). РћС‚РІРµС‚ РѕС‚РєР»РѕРЅС‘РЅ. | AI answer lacks evidence (file/line). Answer rejected. | Model hallucination | Rephrase query; check MCP connection |
+| E603 | РўР°Р№Рј-Р°СѓС‚ РѕС‚РІРµС‚Р° AI ({sec} СЃРµРє). РџСЂРѕРІРµСЂСЊС‚Рµ СЃРµС‚СЊ. | AI response timeout ({sec} s). Check network. | Network / provider slow | Retry; check firewall/proxy |
 
 ### 9.7 Change proposal errors (E7xx)
 
 | Code | Message (RU) | Message (EN) | Cause | Recovery |
 |------|-------------|-------------|-------|----------|
-| E701 | Файл для изменения не найден: {path} | Target file not found: {path} | File moved/deleted | Reindex, verify path |
-| E702 | Файл изменён с момента индексации. Переиндексируйте. | File modified since indexing. Reindex. | Stale index | Rerun incremental index |
-| E703 | Изменение отклонено оператором. | Change rejected by operator. | Operator pressed reject | No action needed |
+| E701 | Р¤Р°Р№Р» РґР»СЏ РёР·РјРµРЅРµРЅРёСЏ РЅРµ РЅР°Р№РґРµРЅ: {path} | Target file not found: {path} | File moved/deleted | Reindex, verify path |
+| E702 | Р¤Р°Р№Р» РёР·РјРµРЅС‘РЅ СЃ РјРѕРјРµРЅС‚Р° РёРЅРґРµРєСЃР°С†РёРё. РџРµСЂРµРёРЅРґРµРєСЃРёСЂСѓР№С‚Рµ. | File modified since indexing. Reindex. | Stale index | Rerun incremental index |
+| E703 | РР·РјРµРЅРµРЅРёРµ РѕС‚РєР»РѕРЅРµРЅРѕ РѕРїРµСЂР°С‚РѕСЂРѕРј. | Change rejected by operator. | Operator pressed reject | No action needed |
 
 ---
 
@@ -548,9 +548,9 @@ If either MCP fails, the assistant:
 The onboarding assistant suggests a first query from the role-based packs:
 
 ```text
-Найди процедуру РассчитатьСумму в выгрузке.
-Назови конкретный файл, строку, тело процедуры и уверенность.
-Если точного совпадения нет — скажи прямо.
+РќР°Р№РґРё РїСЂРѕС†РµРґСѓСЂСѓ Р Р°СЃСЃС‡РёС‚Р°С‚СЊРЎСѓРјРјСѓ РІ РІС‹РіСЂСѓР·РєРµ.
+РќР°Р·РѕРІРё РєРѕРЅРєСЂРµС‚РЅС‹Р№ С„Р°Р№Р», СЃС‚СЂРѕРєСѓ, С‚РµР»Рѕ РїСЂРѕС†РµРґСѓСЂС‹ Рё СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ.
+Р•СЃР»Рё С‚РѕС‡РЅРѕРіРѕ СЃРѕРІРїР°РґРµРЅРёСЏ РЅРµС‚ вЂ” СЃРєР°Р¶Рё РїСЂСЏРјРѕ.
 ```
 
 ### 11.2 Evidence requirements
@@ -559,18 +559,18 @@ A valid first answer MUST contain:
 
 | Field | Example |
 |-------|---------|
-| File path | `CommonModules/УправлениеТорговлей/Ext/Module.bsl` |
-| Line or identifier | Line 142 / `Процедура РассчитатьСумму` |
+| File path | `CommonModules/РЈРїСЂР°РІР»РµРЅРёРµРўРѕСЂРіРѕРІР»РµР№/Ext/Module.bsl` |
+| Line or identifier | Line 142 / `РџСЂРѕС†РµРґСѓСЂР° Р Р°СЃСЃС‡РёС‚Р°С‚СЊРЎСѓРјРјСѓ` |
 | Code fragment | First 5 lines of the procedure body |
-| Confidence | "Точное совпадение" / "Похожий результат: ..." |
-| Verification hint | "Откройте файл в VS Code, Ctrl+G → строка 142" |
+| Confidence | "РўРѕС‡РЅРѕРµ СЃРѕРІРїР°РґРµРЅРёРµ" / "РџРѕС…РѕР¶РёР№ СЂРµР·СѓР»СЊС‚Р°С‚: ..." |
+| Verification hint | "РћС‚РєСЂРѕР№С‚Рµ С„Р°Р№Р» РІ VS Code, Ctrl+G в†’ СЃС‚СЂРѕРєР° 142" |
 
-If the AI cannot find the symbol, it MUST say "Не найдено" explicitly.
+If the AI cannot find the symbol, it MUST say "РќРµ РЅР°Р№РґРµРЅРѕ" explicitly.
 Substituting a similar name without disclosure is a spec violation.
 
 ### 11.3 State transition
 
-On receiving a valid evidence-based answer: `MCP_OK` → `FIRST_ANSWER`.
+On receiving a valid evidence-based answer: `MCP_OK` в†’ `FIRST_ANSWER`.
 The assistant records only the timestamp and a generated correlation ID. Prompt
 and response text are excluded from the state file.
 
@@ -580,8 +580,8 @@ and response text are excluded from the state file.
 
 ### 12.1 Change proposal flow
 
-1. Operator asks the AI to modify a BSL file (e.g., "Добавь проверку на
-   ноль в РассчитатьСумму").
+1. Operator asks the AI to modify a BSL file (e.g., "Р”РѕР±Р°РІСЊ РїСЂРѕРІРµСЂРєСѓ РЅР°
+   РЅРѕР»СЊ РІ Р Р°СЃСЃС‡РёС‚Р°С‚СЊРЎСѓРјРјСѓ").
 2. AI produces a unified diff or a before/after code block.
 3. The onboarding assistant renders the diff with syntax highlighting and
    canonicalizes every target under `generated/index/source-mirror`. Continue's
@@ -628,8 +628,8 @@ This is a non-negotiable production invariant.
 | `ibcmd-bridge` MCP server | Disabled by default; `IBCMD_ALLOW_WRITE=0` enforced |
 | Installer | Does not include 1C binaries, COM registration, or database connection strings |
 | Onboarding assistant | Never asks for 1C server address, database credentials, or connection string |
-| Security policy | `configs/security-policy.example.json` → `live_bridges_disabled_by_default: true` |
-| Documentation | `docs/SECURITY_NOTES.md` → "Do not test on a live production 1C database" |
+| Security policy | `configs/security-policy.example.json` в†’ `live_bridges_disabled_by_default: true` |
+| Documentation | `docs/SECURITY_NOTES.md` в†’ "Do not test on a live production 1C database" |
 
 ### 13.3 What the operator CAN do (outside onboarding)
 
@@ -677,11 +677,11 @@ This is a non-negotiable production invariant.
 Printed at the end of onboarding:
 
 ```text
-☐ API-ключ хранится только в локальном .env и не попадает в Git
-☐ Выгрузка 1С не отправляется никуда, кроме выбранного AI-провайдера
-☐ Логи в logs/ не содержат ключей и исходного кода
-☐ Живая база 1С не подключена и не изменяется
-☐ Телеметрия отсутствует
+вђ API-РєР»СЋС‡ С…СЂР°РЅРёС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ Р»РѕРєР°Р»СЊРЅРѕРј .env Рё РЅРµ РїРѕРїР°РґР°РµС‚ РІ Git
+вђ Р’С‹РіСЂСѓР·РєР° 1РЎ РЅРµ РѕС‚РїСЂР°РІР»СЏРµС‚СЃСЏ РЅРёРєСѓРґР°, РєСЂРѕРјРµ РІС‹Р±СЂР°РЅРЅРѕРіРѕ AI-РїСЂРѕРІР°Р№РґРµСЂР°
+вђ Р›РѕРіРё РІ logs/ РЅРµ СЃРѕРґРµСЂР¶Р°С‚ РєР»СЋС‡РµР№ Рё РёСЃС…РѕРґРЅРѕРіРѕ РєРѕРґР°
+вђ Р–РёРІР°СЏ Р±Р°Р·Р° 1РЎ РЅРµ РїРѕРґРєР»СЋС‡РµРЅР° Рё РЅРµ РёР·РјРµРЅСЏРµС‚СЃСЏ
+вђ РўРµР»РµРјРµС‚СЂРёСЏ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚
 ```
 
 ---
@@ -703,12 +703,12 @@ Printed at the end of onboarding:
 Recovery follows `docs/RECOVERY.md`. The onboarding assistant integrates
 the six-check model:
 
-1. `binary exists` → E501
-2. `index exists` → E404
-3. `logs writable` → E104
-4. `stats command` → E405
-5. `query smoke` → E505
-6. `mcp help` → E502
+1. `binary exists` в†’ E501
+2. `index exists` в†’ E404
+3. `logs writable` в†’ E104
+4. `stats command` в†’ E405
+5. `query smoke` в†’ E505
+6. `mcp help` в†’ E502
 
 Each check maps to an error code and recovery action from Section 9.
 
@@ -739,10 +739,10 @@ If an upgrade breaks the workbench:
 | Start Menu / desktop shortcuts | Removed |
 | Registry entries | Removed |
 | `.venv` and Python cache | Removed |
-| `generated/` (indexes, reports, state) | **Preserved** — operator deletes manually |
-| `logs/` | **Preserved** — operator deletes manually |
-| `.env` files | **Never touched** — operator deletes manually |
-| VS Code / Continue / Ollama | **Never touched** — not installed by workbench |
+| `generated/` (indexes, reports, state) | **Preserved** вЂ” operator deletes manually |
+| `logs/` | **Preserved** вЂ” operator deletes manually |
+| `.env` files | **Never touched** вЂ” operator deletes manually |
+| VS Code / Continue / Ollama | **Never touched** вЂ” not installed by workbench |
 
 ---
 
@@ -760,9 +760,10 @@ None of these exist yet; they are design outputs for subsequent PRs.
 | `scripts/33_verify_mcp_handshake.ps1` | Automated Code MCP + Help MCP stdio probe |
 | `scripts/34_first_answer_check.ps1` | Guided first query + evidence validation |
 | `scripts/35_propose_bsl_change.ps1` | Diff rendering + confirmation gate |
-| `scripts/36_diagnose.ps1` | Unified diagnostics (wraps healthcheck + MCP probe + env check) |
+| `scripts/36_diagnose.ps1` | Unified diagnostics orchestrator (wraps healthcheck + MCP probe + env check + Continue config preflight) |
+| `scripts/37_diagnose_continue_config.ps1` | Focused Continue 2.0 config preflight (read-only; invoked by 36 as sub-component) |
 | `configs/onboarding-state.schema.json` | JSON Schema for `generated/onboarding-state.json` |
-| `configs/error-catalog.json` | Machine-readable error catalog (code → message RU/EN → recovery) |
+| `configs/error-catalog.json` | Machine-readable error catalog (code в†’ message RU/EN в†’ recovery) |
 | `docs/PRODUCTION_ONBOARDING_SPEC.md` | This document |
 | `docs/PRODUCTION_ACCEPTANCE_MATRIX.md` | Acceptance criteria companion |
 | `tests/test_onboarding_state.py` | State machine transition tests |
@@ -868,8 +869,8 @@ This spec is considered implemented when:
 
 | Term | Definition |
 |------|-----------|
-| BYOK | Bring Your Own Key — operator supplies their own AI provider API key |
-| BYOM | Bring Your Own Model — operator supplies their own model endpoint |
+| BYOK | Bring Your Own Key вЂ” operator supplies their own AI provider API key |
+| BYOM | Bring Your Own Model вЂ” operator supplies their own model endpoint |
 | Code MCP | `bsl-indexer` MCP server providing structural search over 1C BSL code |
 | Help MCP | Python MCP server providing FTS5 search over 1C Syntax Helper |
 | Dump | XML/BSL export of a 1C configuration via Designer |
