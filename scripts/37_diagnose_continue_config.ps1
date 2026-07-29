@@ -1,29 +1,19 @@
-# 37_diagnose_continue_config.ps1
-# Read-only Continue 2.0 configuration preflight diagnostics.
-#
-# Part of the 1C AI Workbench production diagnostics suite.
-# Future scripts/36_diagnose.ps1 (unified orchestrator) may invoke this
-# script as a focused Continue config sub-component.
+﻿# 37_diagnose_continue_config.ps1
+# Read-only Continue 2.0.0 configuration preflight diagnostics.
 #
 # STRICTLY READ-ONLY:
-#   - Does NOT create, modify, rename, or delete any file or directory.
-#   - Does NOT change timestamps, permissions, or bytes of input files.
-#   - Does NOT create temp/log/backup files anywhere.
-#   - Does NOT invoke Continue loader/helper functions.
-#   - Does NOT trigger default YAML creation or migration.
-#   - Does NOT start network, models, or MCP servers.
-#   - Does NOT recurse into .continue subdirectories.
-#   - Does NOT read .env, cache, index, dev_data, skills, sessions.
-#   - Does NOT print config contents, YAML/JSON values, secret names,
-#     apiKey/token/authorization values, dotenv values, or URL
-#     credentials/query/fragment.
+#   - Reads only fixed config/extension allowlist paths.
+#   - Does not create, modify, rename, or delete files or directories.
+#   - Does not recurse into the Continue home.
+#   - Does not read dotenv, cache, index, dev_data, skills, or sessions.
+#   - Does not print input paths, config contents, exception details, or secrets.
+#   - Does not invoke Continue loaders or make network calls.
 #
 # Exit codes:
-#   0 - No blocking failure (PASS or WARN)
-#   1 - Blocking config failure detected
+#   0 - No proven blocking failure (PASS or WARN)
+#   1 - Blocking configuration failure
 #   2 - Invalid invocation or internal diagnostics error
 #
-# Requires: Windows PowerShell 5.1+ or PowerShell 7+
 # SPDX-License-Identifier: MIT
 
 [CmdletBinding()]
@@ -35,155 +25,279 @@ param(
     [string]$ExtensionRoot,
 
     [Parameter(Mandatory = $false)]
+    [string]$PythonExecutable,
+
+    [Parameter(Mandatory = $false)]
     [switch]$Json
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Force UTF-8 output for machine-readable JSON contract
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
+$utf8NoBom = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 
-# --- Constants ---
 $script:SchemaVersion = 1
 $script:ExitPass = 0
 $script:ExitFail = 1
 $script:ExitInternal = 2
-
-# --- Check collection ---
-$script:Checks = [System.Collections.ArrayList]::new()
+$script:Checks = New-Object -TypeName System.Collections.ArrayList
 $script:OverallStatus = 'PASS'
 $script:SelectedSource = 'none'
 
+# Static input allowlist. Tests assert that executable code contains no dotenv
+# path and that ContinueHome is never enumerated.
+$script:AllowedConfigLeafNames = @('config.yaml', 'config.json')
+$script:AllowedExtensionRelativePaths = @('package.json', 'config-yaml-schema.json', 'dist\config-yaml-schema.json')
+
 function Add-Check {
     param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern('^E2\d{2}$')]
         [string]$Code,
+
+        [Parameter(Mandatory = $true)]
         [ValidateSet('PASS', 'WARN', 'FAIL', 'NOT_RUN')]
         [string]$Status,
+
+        [Parameter(Mandatory = $true)]
         [string]$MessageRu,
-        [string]$MessageEn
+
+        [Parameter(Mandatory = $true)]
+        [string]$MessageEn,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$Required
     )
-    $null = $script:Checks.Add(@{
-        code       = $Code
-        status     = $Status
-        messageRu  = $MessageRu
-        messageEn  = $MessageEn
-    })
+
+    $null = $script:Checks.Add(
+        @{
+            code      = $Code
+            status    = $Status
+            messageRu = $MessageRu
+            messageEn = $MessageEn
+        }
+    )
+
     if ($Status -eq 'FAIL') {
         $script:OverallStatus = 'FAIL'
     }
-    elseif ($Status -eq 'WARN' -and $script:OverallStatus -ne 'FAIL') {
+    elseif (
+        ($Status -eq 'WARN' -or ($Status -eq 'NOT_RUN' -and $Required)) -and
+        $script:OverallStatus -ne 'FAIL'
+    ) {
         $script:OverallStatus = 'WARN'
     }
 }
 
-function Get-FirstMeaningfulChar {
-    param([string]$Path)
+function Test-IsReparsePoint {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $false
+    }
+    try {
+        $item = Get-Item -LiteralPath $Path -Force
+        return (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    }
+    catch {
+        return $true
+    }
+}
+
+function Get-FirstMeaningfulCharacter {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
     try {
         $bytes = [System.IO.File]::ReadAllBytes($Path)
     }
     catch {
-        return $null
+        return [pscustomobject]@{ State = 'unreadable'; Character = $null }
     }
     if ($null -eq $bytes -or $bytes.Length -eq 0) {
-        return [char]0
+        return [pscustomobject]@{ State = 'empty'; Character = [char]0 }
     }
-    $startIdx = 0
-    # Skip UTF-8 BOM (EF BB BF)
-    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-        $startIdx = 3
+
+    $index = 0
+    if (
+        $bytes.Length -ge 3 -and
+        $bytes[0] -eq 0xEF -and
+        $bytes[1] -eq 0xBB -and
+        $bytes[2] -eq 0xBF
+    ) {
+        $index = 3
     }
-    $i = $startIdx
-    while ($i -lt $bytes.Length) {
-        $b = $bytes[$i]
-        if ($b -eq 0x20 -or $b -eq 0x09 -or $b -eq 0x0D -or $b -eq 0x0A) {
-            $i++
+    while ($index -lt $bytes.Length) {
+        $value = $bytes[$index]
+        if ($value -eq 0x20 -or $value -eq 0x09 -or $value -eq 0x0D -or $value -eq 0x0A) {
+            $index++
+            continue
         }
-        else {
-            break
-        }
+        return [pscustomobject]@{ State = 'content'; Character = [char]$value }
     }
-    if ($i -ge $bytes.Length) {
-        return [char]0
+    return [pscustomobject]@{ State = 'empty'; Character = [char]0 }
+}
+
+function Get-YamlLexicalResult {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $result = Get-FirstMeaningfulCharacter -Path $Path
+    if ($result.State -ne 'content') {
+        return $result.State
     }
-    return [char]$bytes[$i]
+    $character = $result.Character
+    $codePoint = [int]$character
+    if (
+        ($codePoint -ge 65 -and $codePoint -le 90) -or
+        ($codePoint -ge 97 -and $codePoint -le 122) -or
+        $character -eq '_' -or
+        $character -eq '"' -or
+        $character -eq "'" -or
+        $character -eq '-' -or
+        $character -eq '{' -or
+        $character -eq '[' -or
+        $character -eq '%' -or
+        $character -eq '#'
+    ) {
+        return 'plausible'
+    }
+    return 'invalid'
 }
 
-function Test-FileEmpty {
-    param([string]$Path)
-    $ch = Get-FirstMeaningfulChar -Path $Path
-    if ($null -eq $ch) { return $true }
-    return ($ch -eq [char]0)
+function Get-JsonLexicalResult {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $result = Get-FirstMeaningfulCharacter -Path $Path
+    if ($result.State -ne 'content') {
+        return $result.State
+    }
+    $character = $result.Character
+    $codePoint = [int]$character
+    if ($character -eq '#') {
+        return 'markdown'
+    }
+    if (
+        $character -eq '{' -or
+        $character -eq '[' -or
+        $character -eq '"' -or
+        $character -eq '/' -or
+        $character -eq '-' -or
+        ($codePoint -ge 48 -and $codePoint -le 57) -or
+        $character -eq 't' -or
+        $character -eq 'f' -or
+        $character -eq 'n'
+    ) {
+        return 'plausible'
+    }
+    return 'invalid'
 }
 
-function Test-YamlLexicalPreflight {
-    param([string]$Path)
-    $ch = Get-FirstMeaningfulChar -Path $Path
-    if ($null -eq $ch) { return 'unreadable' }
-    if ($ch -eq [char]0) { return 'empty' }
-    $c = [int]$ch
-    if ($c -ge 65 -and $c -le 90) { return 'ok' }
-    if ($c -ge 97 -and $c -le 122) { return 'ok' }
-    if ($ch -eq '_' -or $ch -eq '"' -or $ch -eq "'" -or $ch -eq '-') { return 'ok' }
-    if ($ch -eq '{' -or $ch -eq '[' -or $ch -eq '%') { return 'ok' }
-    if ($ch -eq '#') { return 'ok' }
-    return 'suspicious'
-}
+function ConvertTo-SemanticVersion {
+    param([Parameter(Mandatory = $false)][string]$VersionText)
 
-function Test-JsonLexicalPreflight {
-    param([string]$Path)
-    $ch = Get-FirstMeaningfulChar -Path $Path
-    if ($null -eq $ch) { return 'unreadable' }
-    if ($ch -eq [char]0) { return 'empty' }
-    if ($ch -eq '{' -or $ch -eq '[' -or $ch -eq '"') { return 'ok' }
-    if ($ch -eq '/') { return 'ok' }
-    $c = [int]$ch
-    if ($c -ge 48 -and $c -le 57) { return 'ok' }
-    if ($ch -eq '-') { return 'ok' }
-    if ($ch -eq 't' -or $ch -eq 'f' -or $ch -eq 'n') { return 'ok' }
-    if ($ch -eq '#') { return 'markdown' }
-    return 'suspicious'
-}
-
-function Find-ContinueExtension {
-    param([string]$ExplicitRoot)
-    if ($ExplicitRoot) {
-        # Explicit root provided: use it only if it exists as a container.
-        # Do NOT fall back to default search when explicit path is given.
-        if (Test-Path -LiteralPath $ExplicitRoot -PathType Container) {
-            return $ExplicitRoot
-        }
+    if (-not $VersionText) {
         return $null
     }
-    # No explicit root: search default VS Code extensions directory
+    if ($VersionText -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$') {
+        return $null
+    }
     try {
-        $extBase = Join-Path $env:USERPROFILE '.vscode\extensions'
-        if (-not (Test-Path -LiteralPath $extBase -PathType Container)) {
-            return $null
-        }
-        $candidates = @(Get-ChildItem -LiteralPath $extBase -Directory -Filter 'continue.continue-*' -ErrorAction SilentlyContinue)
-        if ($candidates.Count -eq 0) {
-            return $null
-        }
-        $sorted = $candidates | Sort-Object Name -Descending
-        return $sorted[0].FullName
+        $numeric = [System.Version]::Parse("$($Matches[1]).$($Matches[2]).$($Matches[3])")
+    }
+    catch {
+        return $null
+    }
+    $stableRank = 1
+    if ($Matches[4]) {
+        $stableRank = 0
+    }
+    return [pscustomobject]@{
+        Numeric    = $numeric
+        StableRank = $stableRank
+        Text       = $VersionText
+    }
+}
+
+function Get-ExtensionVersion {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $packagePath = Join-Path $Root 'package.json'
+    if (
+        -not (Test-Path -LiteralPath $packagePath -PathType Leaf) -or
+        (Test-IsReparsePoint -Path $packagePath)
+    ) {
+        return $null
+    }
+    try {
+        $raw = [System.IO.File]::ReadAllText($packagePath, [System.Text.Encoding]::UTF8)
+        $package = $raw | ConvertFrom-Json
+        return [string]$package.version
     }
     catch {
         return $null
     }
 }
 
-function Get-ExtensionVersion {
-    param([string]$ExtRoot)
-    $pkgPath = Join-Path $ExtRoot 'package.json'
-    if (-not (Test-Path -LiteralPath $pkgPath -PathType Leaf)) {
+function New-ExtensionCandidate {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $versionText = Get-ExtensionVersion -Root $Root
+    $semantic = ConvertTo-SemanticVersion -VersionText $versionText
+    if ($null -eq $semantic) {
+        $semantic = [pscustomobject]@{
+            Numeric    = [System.Version]::Parse('0.0.0')
+            StableRank = 0
+            Text       = $versionText
+        }
+    }
+    return [pscustomobject]@{
+        Root       = $Root
+        Version    = $versionText
+        Numeric    = $semantic.Numeric
+        StableRank = $semantic.StableRank
+        Name       = [System.IO.Path]::GetFileName($Root)
+    }
+}
+
+function Find-ContinueExtension {
+    param([Parameter(Mandatory = $false)][string]$ExplicitRoot)
+
+    if ($ExplicitRoot) {
+        $fullRoot = [System.IO.Path]::GetFullPath($ExplicitRoot)
+        if (
+            (Test-Path -LiteralPath $fullRoot -PathType Container) -and
+            -not (Test-IsReparsePoint -Path $fullRoot)
+        ) {
+            return New-ExtensionCandidate -Root $fullRoot
+        }
         return $null
     }
+
     try {
-        $raw = [System.IO.File]::ReadAllText($pkgPath)
-        $pkg = $raw | ConvertFrom-Json
-        return $pkg.version
+        $extensionBase = Join-Path $env:USERPROFILE '.vscode\extensions'
+        if (
+            -not (Test-Path -LiteralPath $extensionBase -PathType Container) -or
+            (Test-IsReparsePoint -Path $extensionBase)
+        ) {
+            return $null
+        }
+        $candidates = @(
+            Get-ChildItem -LiteralPath $extensionBase -Directory -Filter 'continue.continue-*' -ErrorAction SilentlyContinue |
+                Where-Object { -not (Test-IsReparsePoint -Path $_.FullName) } |
+                ForEach-Object { New-ExtensionCandidate -Root $_.FullName }
+        )
+        if ($candidates.Count -eq 0) {
+            return $null
+        }
+        $sorted = @(
+            $candidates |
+                Sort-Object -Property `
+                    @{ Expression = { $_.Numeric }; Descending = $true }, `
+                    @{ Expression = { $_.StableRank }; Descending = $true }, `
+                    @{ Expression = { $_.Name }; Descending = $true }
+        )
+        return $sorted[0]
     }
     catch {
         return $null
@@ -191,268 +305,360 @@ function Get-ExtensionVersion {
 }
 
 function Find-BundledSchema {
-    param([string]$ExtRoot)
-    if (-not $ExtRoot) { return $null }
-    $schemaPath = Join-Path $ExtRoot 'config-yaml-schema.json'
-    if (Test-Path -LiteralPath $schemaPath -PathType Leaf) {
-        return $schemaPath
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    foreach ($relativePath in @('config-yaml-schema.json', 'dist\config-yaml-schema.json')) {
+        $candidate = Join-Path $Root $relativePath
+        if (
+            (Test-Path -LiteralPath $candidate -PathType Leaf) -and
+            -not (Test-IsReparsePoint -Path $candidate)
+        ) {
+            return $candidate
+        }
     }
-    $distSchema = Join-Path $ExtRoot 'dist\config-yaml-schema.json'
-    if (Test-Path -LiteralPath $distSchema -PathType Leaf) {
-        return $distSchema
+    return $null
+}
+
+function Resolve-PythonExecutable {
+    param([Parameter(Mandatory = $false)][string]$ExplicitPath)
+
+    if ($ExplicitPath) {
+        $fullPath = [System.IO.Path]::GetFullPath($ExplicitPath)
+        if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
+            return $fullPath
+        }
+        return $null
+    }
+    $repositoryRoot = Split-Path -Parent $PSScriptRoot
+    $venvPython = Join-Path $repositoryRoot '.venv\Scripts\python.exe'
+    if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
+        return $venvPython
+    }
+    foreach ($name in @('python', 'python3')) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($null -ne $command) {
+            return $command.Source
+        }
     }
     return $null
 }
 
 function Invoke-YamlParseCheck {
-    param([string]$YamlPath)
-    $pythonCmd = $null
-    foreach ($candidate in @('python', 'python3', 'py')) {
-        $found = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($found) { $pythonCmd = $candidate; break }
-    }
-    if (-not $pythonCmd) { return 'not_run' }
-    $checkCode = 'import sys; exec("try:\n import yaml\nexcept ImportError:\n sys.exit(2)")'
-    try {
-        & $pythonCmd -c $checkCode 2>$null
-        if ($LASTEXITCODE -eq 2) { return 'not_run' }
-    }
-    catch { return 'not_run' }
-    $parseCode = 'import sys,yaml;f=open(sys.argv[1],"r",encoding="utf-8-sig");d=yaml.safe_load(f);f.close();sys.exit(0 if isinstance(d,dict) else 1)'
-    try {
-        & $pythonCmd -c $parseCode $YamlPath 2>$null
-        $code = $LASTEXITCODE
-        if ($code -eq 0) { return 'pass' }
-        return 'fail'
-    }
-    catch { return 'not_run' }
-}
+    param(
+        [Parameter(Mandatory = $true)][string]$YamlPath,
+        [Parameter(Mandatory = $false)][string]$PythonPath
+    )
 
-function Invoke-SchemaValidation {
-    param([string]$YamlPath, [string]$SchemaPath)
-    if (-not $SchemaPath) { return 'not_run' }
-    $pythonCmd = $null
-    foreach ($candidate in @('python', 'python3', 'py')) {
-        $found = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($found) { $pythonCmd = $candidate; break }
-    }
-    if (-not $pythonCmd) { return 'not_run' }
-    $valCode = 'import sys,yaml,json,jsonschema;f=open(sys.argv[1],"r",encoding="utf-8-sig");d=yaml.safe_load(f);f.close();s=open(sys.argv[2],"r",encoding="utf-8-sig");sc=json.load(s);s.close();jsonschema.validate(d,sc);sys.exit(0)'
-    try {
-        & $pythonCmd -c $valCode $YamlPath $SchemaPath 2>$null
-        $code = $LASTEXITCODE
-        if ($code -eq 0) { return 'pass' }
-        if ($code -eq 1) { return 'fail' }
+    if (-not $PythonPath) {
         return 'not_run'
     }
-    catch { return 'not_run' }
+    $parseCode = @'
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(20)
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8-sig') as stream:
+        value = yaml.safe_load(stream)
+    sys.exit(0 if isinstance(value, dict) else 21)
+except yaml.YAMLError:
+    sys.exit(21)
+except Exception:
+    sys.exit(24)
+'@
+    & $PythonPath -I -c $parseCode $YamlPath 1>$null 2>$null
+    $result = $LASTEXITCODE
+    if ($result -eq 0) { return 'pass' }
+    if ($result -eq 20) { return 'not_run' }
+    if ($result -eq 21) { return 'fail' }
+    throw 'Redacted YAML parser subprocess failure.'
 }
 
-# =============================================================================
-# MAIN DIAGNOSTICS
-# =============================================================================
+function Invoke-YamlSchemaCheck {
+    param(
+        [Parameter(Mandatory = $true)][string]$YamlPath,
+        [Parameter(Mandatory = $true)][string]$SchemaPath,
+        [Parameter(Mandatory = $false)][string]$PythonPath
+    )
+
+    if (-not $PythonPath) {
+        return 'not_run'
+    }
+    $schemaCode = @'
+import json
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(20)
+try:
+    import jsonschema
+except ImportError:
+    sys.exit(22)
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8-sig') as stream:
+        value = yaml.safe_load(stream)
+    with open(sys.argv[2], 'r', encoding='utf-8-sig') as stream:
+        schema = json.load(stream)
+    jsonschema.validate(value, schema)
+    sys.exit(0)
+except jsonschema.ValidationError:
+    sys.exit(23)
+except Exception:
+    sys.exit(24)
+'@
+    & $PythonPath -I -c $schemaCode $YamlPath $SchemaPath 1>$null 2>$null
+    $result = $LASTEXITCODE
+    if ($result -eq 0) { return 'pass' }
+    if ($result -eq 20 -or $result -eq 22) { return 'not_run' }
+    if ($result -eq 23) { return 'fail' }
+    throw 'Redacted YAML schema subprocess failure.'
+}
 
 try {
-    # --- Resolve Continue home ---
     if (-not $ContinueHome) {
         $ContinueHome = Join-Path $env:USERPROFILE '.continue'
     }
     $ContinueHome = [System.IO.Path]::GetFullPath($ContinueHome)
 
-    # --- Resolve extension root ---
-    $resolvedExtRoot = Find-ContinueExtension -ExplicitRoot $ExtensionRoot
+    $continueHomeSafe = $true
+    if ((Test-Path -LiteralPath $ContinueHome) -and (Test-IsReparsePoint -Path $ContinueHome)) {
+        $continueHomeSafe = $false
+        Add-Check -Code 'E214' -Status 'FAIL' `
+            -MessageRu 'Каталог Continue является reparse point; чтение прекращено.' `
+            -MessageEn 'Continue home is a reparse point; inspection stopped.'
+    }
 
-    # --- Check: Extension presence ---
-    if (-not $resolvedExtRoot) {
-        Add-Check -Code 'E202' -Status 'FAIL' -MessageRu 'Расширение Continue не найдено в стандартном каталоге.' -MessageEn 'Continue extension not found in standard directory.'
+    $extension = Find-ContinueExtension -ExplicitRoot $ExtensionRoot
+    if ($null -eq $extension) {
+        Add-Check -Code 'E202' -Status 'FAIL' `
+            -MessageRu 'Расширение Continue не найдено в разрешённом каталоге.' `
+            -MessageEn 'Continue extension was not found in the allowed directory.'
     }
     else {
-        Add-Check -Code 'E202' -Status 'PASS' -MessageRu 'Расширение Continue обнаружено.' -MessageEn 'Continue extension detected.'
+        Add-Check -Code 'E202' -Status 'PASS' `
+            -MessageRu 'Расширение Continue обнаружено.' `
+            -MessageEn 'Continue extension detected.'
     }
 
-    # --- Check: Extension version ---
-    $extVersion = $null
-    if ($resolvedExtRoot) {
-        $extVersion = Get-ExtensionVersion -ExtRoot $resolvedExtRoot
+    $extensionVersion = $null
+    if ($null -ne $extension) {
+        $extensionVersion = $extension.Version
     }
-    if (-not $extVersion) {
-        Add-Check -Code 'E210' -Status 'WARN' -MessageRu 'Версия Continue не определена. Невозможно подтвердить совместимость.' -MessageEn 'Continue version undetermined. Cannot confirm compatibility.'
+    if ($extensionVersion -eq '2.0.0') {
+        Add-Check -Code 'E210' -Status 'PASS' `
+            -MessageRu 'Обнаружена точно проверенная версия Continue 2.0.0.' `
+            -MessageEn 'The exactly verified Continue 2.0.0 version was detected.'
+    }
+    elseif ($extensionVersion) {
+        Add-Check -Code 'E210' -Status 'WARN' `
+            -MessageRu "Версия Continue $extensionVersion не входит в точно проверенный контракт 2.0.0." `
+            -MessageEn "Continue $extensionVersion is outside the exactly verified 2.0.0 contract."
     }
     else {
-        $major = ($extVersion -split '\.')[0]
-        if ($major -eq '2') {
-            Add-Check -Code 'E210' -Status 'PASS' -MessageRu "Continue версии ${extVersion} обнаружен (ожидается 2.x)." -MessageEn "Continue version ${extVersion} detected (2.x expected)."
-        }
-        else {
-            Add-Check -Code 'E210' -Status 'WARN' -MessageRu "Continue версии ${extVersion}: ожидается 2.x. Совместимость не подтверждена." -MessageEn "Continue version ${extVersion}: 2.x expected. Compatibility unverified."
-        }
+        Add-Check -Code 'E210' -Status 'WARN' `
+            -MessageRu 'Версия Continue не определена; совместимость не подтверждена.' `
+            -MessageEn 'Continue version is undetermined; compatibility is unverified.'
     }
 
-    # --- Check: Bundled schema ---
     $schemaPath = $null
-    if ($resolvedExtRoot) {
-        $schemaPath = Find-BundledSchema -ExtRoot $resolvedExtRoot
+    if ($null -ne $extension) {
+        $schemaPath = Find-BundledSchema -Root $extension.Root
     }
-    if (-not $schemaPath) {
-        Add-Check -Code 'E208' -Status 'WARN' -MessageRu 'Bundled config-yaml-schema.json не найден. Schema validation недоступна.' -MessageEn 'Bundled config-yaml-schema.json not found. Schema validation unavailable.'
+    if ($schemaPath) {
+        Add-Check -Code 'E208' -Status 'PASS' `
+            -MessageRu 'Bundled schema обнаружена.' `
+            -MessageEn 'Bundled schema detected.'
     }
     else {
-        Add-Check -Code 'E208' -Status 'PASS' -MessageRu 'Bundled schema обнаружена.' -MessageEn 'Bundled schema detected.'
+        Add-Check -Code 'E208' -Status 'WARN' `
+            -MessageRu 'Bundled schema не найдена; schema validation недоступна.' `
+            -MessageEn 'Bundled schema was not found; schema validation is unavailable.'
     }
 
-    # --- Determine config file paths ---
-    $configYamlPath = Join-Path $ContinueHome 'config.yaml'
-    $configJsonPath = Join-Path $ContinueHome 'config.json'
-    $yamlExists = Test-Path -LiteralPath $configYamlPath -PathType Leaf
-    $jsonExists = Test-Path -LiteralPath $configJsonPath -PathType Leaf
-
-    # --- Source selection logic (mirrors Continue 2.0 doLoadConfig) ---
-    $yamlNonEmpty = $false
-    if ($yamlExists) {
-        $yamlNonEmpty = -not (Test-FileEmpty -Path $configYamlPath)
+    $pythonPath = Resolve-PythonExecutable -ExplicitPath $PythonExecutable
+    $configYamlPath = Join-Path $ContinueHome $script:AllowedConfigLeafNames[0]
+    $configJsonPath = Join-Path $ContinueHome $script:AllowedConfigLeafNames[1]
+    $yamlExists = $false
+    $jsonExists = $false
+    if ($continueHomeSafe) {
+        $yamlExists = Test-Path -LiteralPath $configYamlPath -PathType Leaf
+        $jsonExists = Test-Path -LiteralPath $configJsonPath -PathType Leaf
     }
 
-    if ($yamlExists -and $yamlNonEmpty) {
+    if ($yamlExists -and (Test-IsReparsePoint -Path $configYamlPath)) {
         $script:SelectedSource = 'yaml'
+        Add-Check -Code 'E214' -Status 'FAIL' `
+            -MessageRu 'Выбранный config.yaml является reparse point; чтение прекращено.' `
+            -MessageEn 'Selected config.yaml is a reparse point; inspection stopped.'
     }
-    elseif ($jsonExists) {
-        $script:SelectedSource = 'json'
-    }
-    else {
-        $script:SelectedSource = 'none'
-    }
-
-    # --- Case A: Non-empty YAML exists ---
-    if ($script:SelectedSource -eq 'yaml') {
-        $yamlLexical = Test-YamlLexicalPreflight -Path $configYamlPath
-        if ($yamlLexical -eq 'suspicious') {
-            Add-Check -Code 'E204' -Status 'FAIL' -MessageRu 'config.yaml: первый значимый символ не соответствует началу YAML-документа.' -MessageEn 'config.yaml: first meaningful character does not match a YAML document start.'
+    elseif ($yamlExists) {
+        $yamlLexical = Get-YamlLexicalResult -Path $configYamlPath
+        if ($yamlLexical -eq 'empty') {
+            $script:SelectedSource = 'yaml'
+            Add-Check -Code 'E205' -Status 'FAIL' `
+                -MessageRu 'config.yaml пуст; Continue 2.0 может молча заменить его default-конфигурацией.' `
+                -MessageEn 'config.yaml is empty; Continue 2.0 may silently replace it with a default.'
+        }
+        elseif ($yamlLexical -eq 'unreadable' -or $yamlLexical -eq 'invalid') {
+            $script:SelectedSource = 'yaml'
+            Add-Check -Code 'E204' -Status 'FAIL' `
+                -MessageRu 'config.yaml не прошёл безопасную предварительную проверку.' `
+                -MessageEn 'config.yaml did not pass the safe preliminary check.'
         }
         else {
-            $parseResult = Invoke-YamlParseCheck -YamlPath $configYamlPath
+            $script:SelectedSource = 'yaml'
+            $parseResult = Invoke-YamlParseCheck -YamlPath $configYamlPath -PythonPath $pythonPath
             if ($parseResult -eq 'pass') {
-                Add-Check -Code 'E204' -Status 'PASS' -MessageRu 'config.yaml: синтаксический разбор успешен.' -MessageEn 'config.yaml: parse successful.'
-                $schemaResult = Invoke-SchemaValidation -YamlPath $configYamlPath -SchemaPath $schemaPath
-                if ($schemaResult -eq 'pass') {
-                    Add-Check -Code 'E204b' -Status 'PASS' -MessageRu 'config.yaml: schema validation пройдена.' -MessageEn 'config.yaml: schema validation passed.'
-                }
-                elseif ($schemaResult -eq 'fail') {
-                    Add-Check -Code 'E204b' -Status 'FAIL' -MessageRu 'config.yaml: schema validation не пройдена.' -MessageEn 'config.yaml: schema validation failed.'
+                Add-Check -Code 'E204' -Status 'PASS' `
+                    -MessageRu 'config.yaml успешно разобран как YAML object.' `
+                    -MessageEn 'config.yaml parsed successfully as a YAML object.'
+                if ($schemaPath) {
+                    $schemaResult = Invoke-YamlSchemaCheck `
+                        -YamlPath $configYamlPath `
+                        -SchemaPath $schemaPath `
+                        -PythonPath $pythonPath
+                    if ($schemaResult -eq 'pass') {
+                        Add-Check -Code 'E212' -Status 'PASS' `
+                            -MessageRu 'config.yaml прошёл schema validation.' `
+                            -MessageEn 'config.yaml passed schema validation.'
+                    }
+                    elseif ($schemaResult -eq 'fail') {
+                        Add-Check -Code 'E212' -Status 'FAIL' `
+                            -MessageRu 'config.yaml не прошёл schema validation.' `
+                            -MessageEn 'config.yaml failed schema validation.'
+                    }
+                    else {
+                        Add-Check -Code 'E212' -Status 'NOT_RUN' -Required `
+                            -MessageRu 'Schema validation не выполнена: обязательная зависимость недоступна.' `
+                            -MessageEn 'Schema validation was not run because a required dependency is unavailable.'
+                    }
                 }
                 else {
-                    Add-Check -Code 'E204b' -Status 'NOT_RUN' -MessageRu 'config.yaml: schema validation недоступна (Python/jsonschema/bundled schema отсутствуют).' -MessageEn 'config.yaml: schema validation unavailable (Python/jsonschema/bundled schema missing).'
+                    Add-Check -Code 'E212' -Status 'NOT_RUN' -Required `
+                        -MessageRu 'Schema validation не выполнена: bundled schema отсутствует.' `
+                        -MessageEn 'Schema validation was not run because the bundled schema is absent.'
                 }
             }
             elseif ($parseResult -eq 'fail') {
-                Add-Check -Code 'E204' -Status 'FAIL' -MessageRu 'config.yaml: синтаксическая ошибка YAML.' -MessageEn 'config.yaml: YAML syntax error.'
+                Add-Check -Code 'E204' -Status 'FAIL' `
+                    -MessageRu 'config.yaml содержит ошибку YAML или не является object.' `
+                    -MessageEn 'config.yaml contains invalid YAML or is not an object.'
+                Add-Check -Code 'E212' -Status 'NOT_RUN' `
+                    -MessageRu 'Schema validation не выполнялась после ошибки YAML.' `
+                    -MessageEn 'Schema validation was not run after the YAML failure.'
             }
             else {
-                Add-Check -Code 'E204' -Status 'NOT_RUN' -MessageRu 'config.yaml: синтаксический разбор недоступен (Python/PyYAML отсутствуют).' -MessageEn 'config.yaml: parse unavailable (Python/PyYAML missing).'
+                Add-Check -Code 'E204' -Status 'NOT_RUN' -Required `
+                    -MessageRu 'YAML parse не выполнен: Python или PyYAML недоступен.' `
+                    -MessageEn 'YAML parsing was not run because Python or PyYAML is unavailable.'
+                Add-Check -Code 'E212' -Status 'NOT_RUN' -Required `
+                    -MessageRu 'Schema validation не выполнена без успешного YAML parse.' `
+                    -MessageEn 'Schema validation was not run without a successful YAML parse.'
             }
         }
-
-        # Legacy JSON migration warning
         if ($jsonExists) {
-            $jsonLexical = Test-JsonLexicalPreflight -Path $configJsonPath
-            if ($jsonLexical -eq 'markdown' -or $jsonLexical -eq 'suspicious' -or $jsonLexical -eq 'empty') {
-                Add-Check -Code 'E209' -Status 'WARN' -MessageRu 'Legacy config.json присутствует и невалиден. Рекомендуется архивировать после подтверждения работы YAML.' -MessageEn 'Legacy config.json present and invalid. Recommend archiving after confirming YAML works.'
-            }
-            else {
-                Add-Check -Code 'E209' -Status 'WARN' -MessageRu 'Legacy config.json присутствует. Migration risk: Continue может читать его как fallback.' -MessageEn 'Legacy config.json present. Migration risk: Continue may read it as fallback.'
-            }
+            Add-Check -Code 'E209' -Status 'WARN' `
+                -MessageRu 'Legacy config.json присутствует; YAML остаётся выбранным, возможен migration warning.' `
+                -MessageEn 'Legacy config.json is present; YAML remains selected and a migration warning may appear.'
         }
     }
-    # --- Case B: YAML exists but empty/whitespace-only ---
-    elseif ($yamlExists -and -not $yamlNonEmpty) {
-        Add-Check -Code 'E205' -Status 'FAIL' -MessageRu 'config.yaml существует, но пуст или содержит только пробельные символы. Continue 2.0 loader способен молча заменить такой файл default-конфигурацией.' -MessageEn 'config.yaml exists but is empty or whitespace-only. Continue 2.0 loader may silently replace it with default configuration.'
-        $script:SelectedSource = 'yaml'
+    elseif ($jsonExists -and (Test-IsReparsePoint -Path $configJsonPath)) {
+        $script:SelectedSource = 'json'
+        Add-Check -Code 'E214' -Status 'FAIL' `
+            -MessageRu 'Выбранный config.json является reparse point; чтение прекращено.' `
+            -MessageEn 'Selected config.json is a reparse point; inspection stopped.'
     }
-    # --- Case C: No YAML, JSON exists ---
     elseif ($jsonExists) {
-        $jsonLexical = Test-JsonLexicalPreflight -Path $configJsonPath
-        if ($jsonLexical -eq 'markdown') {
-            Add-Check -Code 'E206' -Status 'FAIL' -MessageRu 'config.json: первый значимый символ указывает на Markdown/не-JSON содержимое. Continue не сможет загрузить конфигурацию.' -MessageEn 'config.json: first meaningful character indicates Markdown/non-JSON content. Continue cannot load configuration.'
-        }
-        elseif ($jsonLexical -eq 'empty') {
-            Add-Check -Code 'E206' -Status 'FAIL' -MessageRu 'config.json: файл пуст или содержит только пробельные символы.' -MessageEn 'config.json: file is empty or whitespace-only.'
-        }
-        elseif ($jsonLexical -eq 'suspicious') {
-            Add-Check -Code 'E206' -Status 'FAIL' -MessageRu 'config.json: первый значимый символ не соответствует JSON/JSONC.' -MessageEn 'config.json: first meaningful character does not match JSON/JSONC.'
-        }
-        elseif ($jsonLexical -eq 'unreadable') {
-            Add-Check -Code 'E206' -Status 'FAIL' -MessageRu 'config.json: файл нечитаем.' -MessageEn 'config.json: file unreadable.'
+        $script:SelectedSource = 'json'
+        $jsonLexical = Get-JsonLexicalResult -Path $configJsonPath
+        if (
+            $jsonLexical -eq 'markdown' -or
+            $jsonLexical -eq 'empty' -or
+            $jsonLexical -eq 'unreadable' -or
+            $jsonLexical -eq 'invalid'
+        ) {
+            Add-Check -Code 'E206' -Status 'FAIL' `
+                -MessageRu 'config.json не прошёл безопасную лексическую проверку JSON/JSONC.' `
+                -MessageEn 'config.json did not pass the safe JSON/JSONC lexical check.'
         }
         else {
-            Add-Check -Code 'E206' -Status 'PASS' -MessageRu 'config.json: лексическая проверка пройдена (начинается с допустимого JSON/JSONC токена).' -MessageEn 'config.json: lexical preflight passed (starts with valid JSON/JSONC token).'
-            Add-Check -Code 'E206b' -Status 'NOT_RUN' -MessageRu 'config.json: полный JSONC-разбор не выполнялся (нет встроенного JSONC-парсера в PowerShell).' -MessageEn 'config.json: full JSONC parse not performed (no built-in JSONC parser in PowerShell).'
+            Add-Check -Code 'E206' -Status 'WARN' `
+                -MessageRu 'config.json прошёл только лексическую проверку; это не полная валидация JSONC.' `
+                -MessageEn 'config.json passed only a lexical check; this is not full JSONC validation.'
+            Add-Check -Code 'E213' -Status 'NOT_RUN' -Required `
+                -MessageRu 'Полный JSONC parse и schema validation этим скриптом не выполняются.' `
+                -MessageEn 'This script does not perform full JSONC parsing or schema validation.'
         }
     }
-    # --- Case D: Both absent ---
-    else {
-        Add-Check -Code 'E207' -Status 'WARN' -MessageRu 'config.yaml и config.json отсутствуют. Первый запуск: Continue 2.0 может создать default config.yaml при обращении к config path.' -MessageEn 'config.yaml and config.json both absent. First run: Continue 2.0 may create default config.yaml when accessing config path.'
+    elseif ($continueHomeSafe) {
+        Add-Check -Code 'E207' -Status 'WARN' `
+            -MessageRu 'Оба config-файла отсутствуют; первый запуск Continue может создать default config.yaml.' `
+            -MessageEn 'Both config files are absent; first Continue launch may create a default config.yaml.'
     }
 
-    # --- Runtime checks: always NOT_RUN in this script ---
-    Add-Check -Code 'E211' -Status 'NOT_RUN' -MessageRu 'Runtime-проверки (chat, autocomplete, edit/apply, tool_use, MCP) не выполняются этим скриптом.' -MessageEn 'Runtime checks (chat, autocomplete, edit/apply, tool_use, MCP) are not performed by this script.'
+    Add-Check -Code 'E211' -Status 'NOT_RUN' `
+        -MessageRu 'Runtime-проверки не входят в этот read-only preflight.' `
+        -MessageEn 'Runtime checks are outside this read-only preflight.'
 
-    # --- Compute exit code ---
     $exitCode = $script:ExitPass
     if ($script:OverallStatus -eq 'FAIL') {
         $exitCode = $script:ExitFail
     }
-
-    # --- Output ---
     if ($Json) {
-        $output = @{
+        @{
             schemaVersion  = $script:SchemaVersion
             overall        = $script:OverallStatus
             exitCode       = $exitCode
             selectedSource = $script:SelectedSource
             checks         = @($script:Checks)
-        }
-        $output | ConvertTo-Json -Depth 5 -Compress
+        } | ConvertTo-Json -Depth 5 -Compress
     }
     else {
-        Write-Host "Continue Config Diagnostics (read-only)"
-        Write-Host "========================================"
-        Write-Host "Continue home : $ContinueHome"
-        if ($resolvedExtRoot) { Write-Host "Extension root: $resolvedExtRoot" } else { Write-Host "Extension root: NOT FOUND" }
-        if ($extVersion) { Write-Host "Extension ver : $extVersion" } else { Write-Host "Extension ver : UNKNOWN" }
-        Write-Host "Selected src  : $($script:SelectedSource)"
-        Write-Host "Overall       : $($script:OverallStatus)"
-        Write-Host ""
-        foreach ($chk in $script:Checks) {
-            $icon = switch ($chk.status) {
-                'PASS' { '[OK]' }
-                'WARN' { '[!!]' }
-                'FAIL' { '[XX]' }
-                'NOT_RUN' { '[--]' }
-            }
-            Write-Host "$icon $($chk.code): $($chk.messageEn)"
+        Write-Output 'Continue Config Diagnostics (read-only)'
+        Write-Output 'Continue home : inspected (path redacted)'
+        if ($null -ne $extension) {
+            Write-Output 'Extension root: inspected (path redacted)'
+        }
+        else {
+            Write-Output 'Extension root: not found'
+        }
+        if ($extensionVersion) {
+            Write-Output "Extension ver : $extensionVersion"
+        }
+        else {
+            Write-Output 'Extension ver : unknown'
+        }
+        Write-Output "Selected src  : $($script:SelectedSource)"
+        Write-Output "Overall       : $($script:OverallStatus)"
+        foreach ($check in $script:Checks) {
+            Write-Output "$($check.status) $($check.code): $($check.messageEn)"
         }
     }
-
     exit $exitCode
 }
 catch {
+    $fixedRu = 'Внутренняя ошибка диагностики. Детали скрыты.'
+    $fixedEn = 'Internal diagnostics error. Details are redacted.'
     if ($Json) {
-        $errMsg = $_.Exception.Message
-        $errOutput = @{
+        @{
             schemaVersion  = $script:SchemaVersion
             overall        = 'FAIL'
             exitCode       = $script:ExitInternal
             selectedSource = $script:SelectedSource
-            checks         = @(@{
-                code      = 'E299'
-                status    = 'FAIL'
-                messageRu = "Внутренняя ошибка диагностики: $errMsg"
-                messageEn = "Internal diagnostics error: $errMsg"
-            })
-        }
-        $errOutput | ConvertTo-Json -Depth 5 -Compress
+            checks         = @(
+                @{
+                    code      = 'E299'
+                    status    = 'FAIL'
+                    messageRu = $fixedRu
+                    messageEn = $fixedEn
+                }
+            )
+        } | ConvertTo-Json -Depth 5 -Compress
     }
     else {
-        Write-Error "Internal diagnostics error: $($_.Exception.Message)"
+        Write-Output $fixedEn
     }
     exit $script:ExitInternal
 }
