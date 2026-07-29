@@ -21,6 +21,11 @@ jobs:
           fetch-depth: 0
       - name: Run gitleaks
         shell: bash
+        env:
+          GITLEAKS_EVENT_NAME: ${{ github.event_name }}
+          GITLEAKS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITLEAKS_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITLEAKS_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           version="8.30.1"
@@ -29,7 +34,44 @@ jobs:
           curl --fail --location --silent --show-error "$url" --output "$archive"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
           tar -xzf "$archive" gitleaks
-          ./gitleaks git --redact --verbose .
+
+          require_sha() {
+            local sha="$1"
+            local label="$2"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Invalid $label commit SHA for gitleaks."
+              exit 2
+            fi
+          }
+
+          require_sha "$GITLEAKS_HEAD_SHA" "head"
+          case "$GITLEAKS_EVENT_NAME" in
+            pull_request)
+              require_sha "$GITLEAKS_BASE_SHA" "pull request base"
+              log_opts="$GITLEAKS_BASE_SHA..$GITLEAKS_HEAD_SHA"
+              ;;
+            push)
+              if [[ "$GITLEAKS_BEFORE_SHA" =~ ^0{40}$ ]]; then
+                log_opts="$GITLEAKS_HEAD_SHA"
+              else
+                require_sha "$GITLEAKS_BEFORE_SHA" "push before"
+                if git cat-file -e "$GITLEAKS_BEFORE_SHA^{commit}" 2>/dev/null; then
+                  log_opts="$GITLEAKS_BEFORE_SHA..$GITLEAKS_HEAD_SHA"
+                else
+                  log_opts="$GITLEAKS_HEAD_SHA"
+                fi
+              fi
+              ;;
+            workflow_dispatch)
+              log_opts="$GITLEAKS_HEAD_SHA"
+              ;;
+            *)
+              echo "::error::Unsupported event for gitleaks: $GITLEAKS_EVENT_NAME"
+              exit 2
+              ;;
+          esac
+
+          ./gitleaks git --redact --verbose --log-opts="$log_opts" .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
