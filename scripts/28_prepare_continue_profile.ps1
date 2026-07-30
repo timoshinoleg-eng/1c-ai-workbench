@@ -242,20 +242,37 @@ function Test-LooksLikeRealSecret {
     return $false
 }
 
+function Test-LooksLikeModelCredential {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+
+    $compact = $Value.Trim()
+    if ($compact -match '^\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}$') { return $true }
+
+    # Model identifiers may contain provider namespaces. Evaluate each segment
+    # independently so a normal path is not mistaken for one long opaque token,
+    # while a credential hidden after one or more slashes still fails closed.
+    foreach ($segment in $compact.Split('/')) {
+        if ($segment -match '^\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}$') { return $true }
+        if (Test-LooksLikeRealSecret -Value $segment) { return $true }
+    }
+    return $false
+}
+
 function Assert-SafeModelId {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value,
         [Parameter(Mandatory = $true)][string]$ParameterName
     )
+    if (Test-LooksLikeModelCredential -Value $Value) {
+        Write-Failure -Message "$ParameterName looks like credential material; pass a model identifier only." -Code 5
+    }
     if (
         [string]::IsNullOrWhiteSpace($Value) -or
         $Value.Length -gt 200 -or
         -not ($Value -cmatch '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}$')
     ) {
         Write-Failure -Message "$ParameterName must be a non-empty model identifier using only letters, digits, dot, underscore, colon, slash, plus or hyphen." -Code 5
-    }
-    if (Test-LooksLikeRealSecret -Value $Value) {
-        Write-Failure -Message "$ParameterName looks like credential material; pass a model identifier only." -Code 5
     }
 }
 

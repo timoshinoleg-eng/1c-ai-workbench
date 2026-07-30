@@ -556,6 +556,33 @@ def test_bsl_weak_laptop_example_is_valid_and_on_save() -> None:
 
 
 HOSTED_SECRET = "ZAI_API_KEY"
+XKIRO_API_BASE = "https://xkiro.com/v1"
+SAFE_NAMESPACED_MODEL_IDS = (
+    "deepseek/deepseek-v4-pro",
+    "xkiro/deepseek/deepseek-v4-pro",
+    "Qwen/Qwen2.5-Coder-32B-Instruct",
+)
+JWT_LIKE_MODEL = ".".join(("eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxMjM0NTY3ODkwIn0", "c2lnbmF0dXJl"))
+OPAQUE_MODEL_SEGMENT = "AbCdEf0123456789GhIjKlMnOpQrStUv"
+DANGEROUS_MODEL_IDS = (
+    "gsk_FAKEKEY_0123456789abcdef",
+    "provider/gsk_FAKEKEY_0123456789abcdef",
+    "sk-proj-abcdef0123456789",
+    "provider/sk-proj-abcdef0123456789",
+    "sk_FAKEKEY_0123456789abcdef",
+    "key-FAKEKEY-0123456789abcdef",
+    "bearer fakekey0123456789abcdef",
+    "ghp_FAKEKEY_0123456789abcdef",
+    "gho_FAKEKEY_0123456789abcdef",
+    "xoxb-FAKEKEY-0123456789abcdef",
+    "ocr_FAKEKEY_0123456789abcdef",
+    "${{ secrets.XKIRO_API_KEY }}",
+    "provider/${{ secrets.XKIRO_API_KEY }}",
+    JWT_LIKE_MODEL,
+    f"provider/{JWT_LIKE_MODEL}",
+    OPAQUE_MODEL_SEGMENT,
+    f"provider/{OPAQUE_MODEL_SEGMENT}",
+)
 
 
 def _gen_hosted(
@@ -801,6 +828,72 @@ def test_hosted_rejects_literal_secret_as_model_id(fake_repo: Path) -> None:
         check_only=True,
     )
     assert result.returncode != 0
+
+
+@pytest.mark.parametrize("model_id", SAFE_NAMESPACED_MODEL_IDS)
+def test_hosted_accepts_safe_namespaced_model_id_in_generator_and_validator(fake_repo: Path, model_id: str) -> None:
+    out = _generated_hosted(
+        fake_repo,
+        api_base=XKIRO_API_BASE,
+        model_id=model_id,
+        secret_name="XKIRO_API_KEY",
+    )
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(model for model in data["models"] if model["provider"] == "openai")
+    assert agent["apiBase"] == XKIRO_API_BASE
+    assert agent["model"] == model_id
+    assert validator.validate_profile(out, "hosted", fake_repo) == []
+
+
+def test_hosted_namespaced_model_check_only_writes_nothing(fake_repo: Path) -> None:
+    before = {path.relative_to(fake_repo): path.read_bytes() for path in fake_repo.rglob("*") if path.is_file()}
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base=XKIRO_API_BASE,
+        model_id="deepseek/deepseek-v4-pro",
+        secret_name="XKIRO_API_KEY",
+        check_only=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Semantic validation: PASS" in result.stdout
+    assert not _output(fake_repo, "must-not-appear.yaml").exists()
+    after = {path.relative_to(fake_repo): path.read_bytes() for path in fake_repo.rglob("*") if path.is_file()}
+    assert after == before
+    assert not (fake_repo / "generated").exists()
+
+
+@pytest.mark.parametrize("model_id", DANGEROUS_MODEL_IDS)
+def test_hosted_generator_rejects_credential_in_model_namespace_without_writing(fake_repo: Path, model_id: str) -> None:
+    result = _gen_hosted(
+        fake_repo,
+        name="must-not-appear.yaml",
+        api_base=XKIRO_API_BASE,
+        model_id=model_id,
+        secret_name="XKIRO_API_KEY",
+        check_only=True,
+    )
+    assert result.returncode != 0
+    assert "credential material" in result.stderr
+    assert model_id not in (result.stdout + result.stderr)
+    assert not _output(fake_repo, "must-not-appear.yaml").exists()
+
+
+@pytest.mark.parametrize("model_id", DANGEROUS_MODEL_IDS)
+def test_validator_rejects_credential_in_model_namespace_without_echo(fake_repo: Path, model_id: str) -> None:
+    source = _generated_hosted(
+        fake_repo,
+        api_base=XKIRO_API_BASE,
+        model_id="deepseek/deepseek-v4-pro",
+        secret_name="XKIRO_API_KEY",
+    )
+    data = yaml.safe_load(source.read_text(encoding="utf-8"))
+    next(model for model in data["models"] if model["provider"] == "openai")["model"] = model_id
+    bad = fake_repo / "bad-model.yaml"
+    bad.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    errors = validator.validate_profile(bad, "hosted", fake_repo)
+    assert any("credential material" in error for error in errors), errors
+    assert model_id not in "\n".join(errors)
 
 
 def test_hosted_rejects_and_does_not_echo_unsafe_model_id(fake_repo: Path) -> None:

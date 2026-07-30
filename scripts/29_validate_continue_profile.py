@@ -39,20 +39,28 @@ CLOUD_PROVIDERS = {"groq", "openai", "anthropic", "mistral", "deepseek", "azure"
 VECTOR_STORE_MARKERS = ("lancedb", "transformers.js", "nomic")
 REQUIRED_GROQ_MODELS = {"openai/gpt-oss-120b", "qwen/qwen3.6-27b"}
 OLLAMA_AUTOCOMPLETE_MODEL = "qwen2.5-coder:1.5b-base"
+SECRET_PREFIXES = ("gsk_", "sk-", "sk_", "key-", "bearer ", "ghp_", "gho_", "xox", "ocr_")
 
 
 def _looks_like_real_secret(value: str) -> bool:
     """Heuristics for a pasted real credential (not a ${{ secrets.* }} reference)."""
     if SECRET_REFERENCE.match(value):
         return False
-    prefixes = ("gsk_", "sk-", "sk_", "key-", "bearer ", "ghp_", "gho_", "xox")
     lowered = value.strip().lower()
-    if any(lowered.startswith(prefix) for prefix in prefixes):
+    if any(lowered.startswith(prefix) for prefix in SECRET_PREFIXES):
         return True
     compact = value.strip()
     if len(compact) >= 24 and re.fullmatch(r"[A-Za-z0-9+/=_\-]{24,}", compact) is not None:
         return True
     return len(compact) >= 24 and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", compact) is not None
+
+
+def _looks_like_model_credential(value: str) -> bool:
+    """Reject credential material in any provider/model namespace segment."""
+    compact = value.strip()
+    if SECRET_REFERENCE.fullmatch(compact):
+        return True
+    return any(SECRET_REFERENCE.fullmatch(segment) or _looks_like_real_secret(segment) for segment in compact.split("/"))
 
 
 def _model_roles(model: dict[str, Any]) -> list[str]:
@@ -209,10 +217,11 @@ def _common_checks(data: dict[str, Any], canonical: str, errors: list[str]) -> N
             if not isinstance(model.get(required), str) or not model[required].strip():
                 errors.append(f"{label}.{required} is required")
         model_id = model.get("model")
-        if isinstance(model_id, str) and model_id and not MODEL_ID_PATTERN.fullmatch(model_id):
-            errors.append(f"{label}.model contains unsupported characters or exceeds 200 characters")
-        if isinstance(model_id, str) and _looks_like_real_secret(model_id):
-            errors.append(f"{label}.model looks like credential material; use a model identifier")
+        if isinstance(model_id, str) and model_id:
+            if _looks_like_model_credential(model_id):
+                errors.append(f"{label}.model looks like credential material; use a model identifier")
+            elif not MODEL_ID_PATTERN.fullmatch(model_id):
+                errors.append(f"{label}.model contains unsupported characters or exceeds 200 characters")
         roles = _model_roles(model)
         for role in roles:
             if role not in ALLOWED_ROLES:
