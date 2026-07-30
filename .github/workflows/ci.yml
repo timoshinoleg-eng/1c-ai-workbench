@@ -355,6 +355,8 @@ jobs:
   # Отделён от rust-build, чтобы:
   #   * не задерживать PR-проверки (rust-build быстрый, cargo-integration тяжёлый);
   #   * иметь отдельный артефакт test-report для дебага.
+  # Логи сохраняются в стабильном текстовом формате: test-harness JSON и
+  # report-time требуют nightly Rust и не должны маскироваться в stable CI.
   # CARGO_TARGET_DIR явно не задан — cargo кладёт target в ./target/ относительно
   # workspace root, что совпадает с rust-build (тот же rust-cache вейркспейс).
   cargo-integration:
@@ -374,20 +376,16 @@ jobs:
         run: cargo build --release --workspace --all-features
       - name: Unit tests
         working-directory: tools/code-index-mcp
-        run: cargo test --workspace --all-features --no-fail-fast -- --format=json --report-time > cargo-test-unit.json 2> cargo-test-unit.stderr
-        continue-on-error: true
+        run: cargo test --workspace --all-features --no-fail-fast > cargo-test-unit.log 2>&1
       - name: Integration tests (heavy, --ignored)
         working-directory: tools/code-index-mcp
-        run: cargo test --workspace --all-features --no-fail-fast -- --ignored --format=json --report-time > cargo-test-integration.json 2> cargo-test-integration.stderr
-        continue-on-error: true
+        run: cargo test --workspace --all-features --no-fail-fast -- --ignored > cargo-test-integration.log 2>&1
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cargo-test-report
           path: |
-            tools/code-index-mcp/cargo-test-unit.json
-            tools/code-index-mcp/cargo-test-unit.stderr
-            tools/code-index-mcp/cargo-test-integration.json
-            tools/code-index-mcp/cargo-test-integration.stderr
+            tools/code-index-mcp/cargo-test-unit.log
+            tools/code-index-mcp/cargo-test-integration.log
           if-no-files-found: warn
