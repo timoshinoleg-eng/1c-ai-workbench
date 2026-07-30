@@ -54,6 +54,10 @@
 не печатает и не встраивает значение ключа.
 
 ```powershell
+# Kimi Code: официальный coding endpoint, модель и обязательная temperature=1
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset kimi
+#   -> ссылка ${{ secrets.KIMI_API_KEY }}, endpoint https://api.kimi.com/coding/v1
+
 # Preset с проверенным endpoint и именем секрета (Z.AI)
 .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
 #   -> ссылка ${{ secrets.ZAI_API_KEY }}, endpoint https://api.z.ai/api/paas/v4
@@ -64,6 +68,8 @@
     -SecretName OPENROUTER_API_KEY
 ```
 
+- Для `kimi` нужен ключ из Kimi Code Console. Ключи Kimi Open Platform
+  (`https://api.moonshot.cn/v1`) с Kimi Code endpoint не взаимозаменяемы.
 - Не передавайте значение ключа как `-SecretName`/`-ModelId`/`-ApiBase` — генератор
   отклонит всё, что похоже на реальный ключ (префиксы `gsk_`/`sk-`/... или длинная
   base64-подобная строка).

@@ -33,6 +33,7 @@
     and default model id that parameters can still override:
     generic (no defaults; -ApiBase, -ModelId, -SecretName required),
     openrouter (https://openrouter.ai/api/v1, OPENROUTER_API_KEY),
+    kimi (https://api.kimi.com/coding/v1, KIMI_API_KEY, kimi-for-coding),
     zai (https://api.z.ai/api/paas/v4, ZAI_API_KEY, glm-4.6),
     groq-legacy (https://api.groq.com/openai/v1, GROQ_API_KEY, openai/gpt-oss-120b).
 
@@ -77,6 +78,9 @@
     environment alone is CLI-only and does not satisfy this gate.
 
 .EXAMPLE
+    .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset kimi
+
+.EXAMPLE
     .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
 
 .EXAMPLE
@@ -101,7 +105,7 @@ param(
     [string]$Profile,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet('generic', 'openrouter', 'zai', 'groq-legacy')]
+    [ValidateSet('generic', 'openrouter', 'kimi', 'zai', 'groq-legacy')]
     [string]$Preset = 'generic',
 
     [Parameter(Mandatory = $false)]
@@ -285,6 +289,17 @@ function Get-PresetDefaults {
                 SecretName = 'OPENROUTER_API_KEY'
                 ModelId = $null
                 DisplayName = 'OpenRouter model'
+                Temperature = '0.2'
+            }
+        }
+        'kimi' {
+            return [pscustomobject]@{
+                ApiBase = 'https://api.kimi.com/coding/v1'
+                SecretName = 'KIMI_API_KEY'
+                ModelId = 'kimi-for-coding'
+                DisplayName = 'Kimi for Coding'
+                # Kimi Code rejects any explicit temperature other than 1.
+                Temperature = '1'
             }
         }
         'zai' {
@@ -293,6 +308,7 @@ function Get-PresetDefaults {
                 SecretName = 'ZAI_API_KEY'
                 ModelId = 'glm-4.6'
                 DisplayName = 'GLM-4.6 (Z.AI)'
+                Temperature = '0.2'
             }
         }
         'groq-legacy' {
@@ -301,6 +317,7 @@ function Get-PresetDefaults {
                 SecretName = 'GROQ_API_KEY'
                 ModelId = 'openai/gpt-oss-120b'
                 DisplayName = 'GPT-OSS 120B (Groq legacy)'
+                Temperature = '0.2'
             }
         }
     }
@@ -404,12 +421,14 @@ function Resolve-HostedSettings {
     }
 
     $displayName = if (-not [string]::IsNullOrWhiteSpace($ModelId)) { $ModelId } elseif ($null -ne $defaults -and $defaults.DisplayName) { $defaults.DisplayName } else { $modelId }
+    $temperature = if ($null -ne $defaults -and $defaults.Temperature) { $defaults.Temperature } else { '0.2' }
     return [pscustomobject]@{
         ApiBase = $apiBase
         ModelId = $modelId
         SecretName = $secretName
         SecretRef = '${{ secrets.' + $secretName + ' }}'
         DisplayName = $displayName
+        Temperature = $temperature
     }
 }
 
@@ -474,6 +493,7 @@ function Get-TokenMap {
         $map['HOSTED_MODEL_ID'] = $settings.ModelId
         $map['HOSTED_SECRET_REF'] = $settings.SecretRef
         $map['HOSTED_DISPLAY_NAME'] = $settings.DisplayName
+        $map['HOSTED_TEMPERATURE'] = $settings.Temperature
     }
     elseif ($Profile -eq 'LocalAgent') {
         $settings = Resolve-LocalAgentSettings
@@ -514,7 +534,14 @@ function Invoke-RenderProfile {
 
     foreach ($name in $TokenMap.Keys) {
         $replacement = ConvertTo-SingleQuotedYamlValue -Value ([string]$TokenMap[$name])
-        $content = $content.Replace("{{$name}}", $replacement)
+        if ($name -eq 'HOSTED_TEMPERATURE') {
+            # Keep the source template valid YAML for repository linters while
+            # still rendering a numeric scalar (Kimi requires exactly 1).
+            $content = $content.Replace("0.2 # {{$name}}", $replacement)
+        }
+        else {
+            $content = $content.Replace("{{$name}}", $replacement)
+        }
     }
 
     # Deterministic LF line endings regardless of how the template was checked out.

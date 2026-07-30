@@ -183,9 +183,10 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 
 - **HostedAgent** — одна OpenAI-compatible HTTPS-модель оператора (chat/edit/apply,
   `tool_use`) плюс локальные Code Index и Help Index MCP (read-only) и локальное
-  автодополнение Ollama. Preset: `generic`, `openrouter`, `zai` (Z.AI
-  `https://api.z.ai/api/paas/v4`, `glm-4.6`), `groq-legacy`. Ключ задаётся только
-  именем Continue-секрета, никогда значением.
+  автодополнение Ollama. Preset: `generic`, `openrouter`, `kimi` (Kimi Code
+  `https://api.kimi.com/coding/v1`, `kimi-for-coding`), `zai` (Z.AI
+  `https://api.z.ai/api/paas/v4`, `glm-4.6`), `groq-legacy`. Ключ задаётся
+  только именем Continue-секрета, никогда значением.
 - **LocalAgent** — полностью офлайн: одна локальная tool-capable OpenAI-compatible
   модель (loopback HTTP `/v1`) плюс те же MCP и Ollama-автодополнение; без облака
   и секретов.
@@ -198,6 +199,7 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 [`docs/CONTINUE_THIN_CLIENT.md`](docs/CONTINUE_THIN_CLIENT.md):
 
 ```powershell
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset kimi
 .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
 .\scripts\28_prepare_continue_profile.ps1 -Profile LocalAgent -LocalAgentModel qwen2.5-coder:7b
 .\scripts\28_prepare_continue_profile.ps1 -Profile OnlineHybrid

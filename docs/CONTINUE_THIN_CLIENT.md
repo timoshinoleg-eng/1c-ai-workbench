@@ -84,14 +84,22 @@ mcpServers:
 | --- | --- | --- | --- |
 | `generic` | требуется `-ApiBase` | требуется `-SecretName` | требуется `-ModelId` |
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | требуется `-ModelId` |
+| `kimi` | `https://api.kimi.com/coding/v1` | `KIMI_API_KEY` | `kimi-for-coding` |
 | `zai` | `https://api.z.ai/api/paas/v4` | `ZAI_API_KEY` | `glm-4.6` |
 | `groq-legacy` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | `openai/gpt-oss-120b` |
+
+Kimi Code preset использует OpenAI-compatible coding endpoint и выставляет
+`temperature: 1`: Kimi Code отклоняет другие явно заданные значения. Нужен ключ
+из Kimi Code Console; ключи Kimi Open Platform и endpoint `api.moonshot.cn` для
+этого preset не подходят. Контракт endpoint и ошибок:
+<https://www.kimi.com/code/docs/en/kimi-code/error-reference.html>.
 
 Z.AI endpoint (`https://api.z.ai/api/paas/v4`) и модель `glm-4.6` проверены по
 официальной документации Z.AI перед включением preset.
 
 ```powershell
 # Полностью из preset
+.\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset kimi
 .\scripts\28_prepare_continue_profile.ps1 -Profile HostedAgent -Preset zai
 
 # Generic: свой endpoint, модель и имя секрета

@@ -665,6 +665,7 @@ def _generated_local(fake_repo: Path, *, model: str = "qwen2.5-coder:7b", api_ba
     ("preset", "api_base", "model_id", "secret_name"),
     [
         # Preset supplies everything.
+        ("kimi", None, None, None),
         ("zai", None, None, None),
         ("openrouter", None, "anthropic/claude-3.5-sonnet", None),
         ("groq-legacy", None, None, None),
@@ -702,6 +703,28 @@ def test_hosted_zai_preset_uses_verified_endpoint_and_model(fake_repo: Path) -> 
     assert agent["apiBase"] == "https://api.z.ai/api/paas/v4"
     assert agent["model"] == "glm-4.6"
     assert agent["apiKey"] == "${{ secrets.ZAI_API_KEY }}"
+
+
+def test_hosted_kimi_preset_uses_coding_endpoint_model_and_required_temperature(fake_repo: Path) -> None:
+    out = _generated_hosted(fake_repo, preset="kimi")
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(m for m in data["models"] if m["provider"] == "openai")
+    assert agent["apiBase"] == "https://api.kimi.com/coding/v1"
+    assert agent["model"] == "kimi-for-coding"
+    assert agent["apiKey"] == "${{ secrets.KIMI_API_KEY }}"
+    assert agent["defaultCompletionOptions"]["temperature"] == 1
+
+
+def test_hosted_generic_keeps_provider_neutral_temperature_default(fake_repo: Path) -> None:
+    out = _generated_hosted(
+        fake_repo,
+        api_base="https://api.openai.com/v1",
+        model_id="gpt-4o-mini",
+        secret_name="OPENAI_API_KEY",
+    )
+    data = yaml.safe_load(out.read_text(encoding="utf-8"))
+    agent = next(m for m in data["models"] if m["provider"] == "openai")
+    assert agent["defaultCompletionOptions"]["temperature"] == 0.2
 
 
 def test_hosted_secret_name_is_uppercased_and_referenced(fake_repo: Path) -> None:
