@@ -81,3 +81,175 @@ Remove-Item C:\1c-ai-workbench\tools\cc-1c-skills\.git\index.lock -Force -ErrorA
 ```
 
 The sync script never force-resets tool repositories; if a tool repo has local changes, it leaves them untouched and prints a warning.
+
+## Continue config error: Failed to parse config.json
+
+Symptom: VS Code shows `Continue (config error)`. Renderer log reports
+`Failed to parse config.json: Line 1: Unexpected token ILLEGAL`. No models,
+MCP servers, or autocomplete load.
+
+Cause: `%USERPROFILE%\.continue\config.json` contains Markdown or other
+non-JSON content. Continue 2.0 selects `config.json` when a usable YAML is
+absent, and the JSONC parser fails on the first non-JSON token.
+
+Diagnosis (read-only):
+
+```powershell
+.\scripts\37_diagnose_continue_config.ps1 -Json
+```
+
+The preflight does not create, modify, rename, or delete files. It reports
+source selection, parse/schema status, exact-version support, and migration
+warnings without paths, raw exceptions, config contents, or secret values.
+
+### Two-phase operator recovery
+
+Keep the recovery PowerShell session open until acceptance or rollback
+finishes. Its variables are the ownership evidence for files created or
+renamed by this procedure.
+
+**Phase 1 — validate and atomically publish a recovery-owned YAML:**
+
+1. Do not touch the legacy `config.json`.
+2. Confirm that `%USERPROFILE%\.continue\config.yaml` does not exist.
+3. Validate the generated Offline Lite profile:
+
+   ```powershell
+   python .\scripts\29_validate_continue_profile.py --kind offline --config .\generated\continue\offline-lite.yaml
+   ```
+
+4. Publish with `CreateNew`, flush-to-disk, and a same-directory atomic
+   fail-if-exists rename:
+
+   ```powershell
+   $continueHome = Join-Path $env:USERPROFILE '.continue'
+   $source = (Resolve-Path -LiteralPath '.\generated\continue\offline-lite.yaml').Path
+   $target = Join-Path $continueHome 'config.yaml'
+   $homeItem = Get-Item -LiteralPath $continueHome
+
+   if (-not $homeItem.PSIsContainer) {
+       throw 'Continue home is not a directory.'
+   }
+   if (($homeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+       throw 'Continue home must not be a reparse point.'
+   }
+   if (Test-Path -LiteralPath $target) {
+       throw 'config.yaml already exists; stop without changing it.'
+   }
+
+   $sourceBytes = [System.IO.File]::ReadAllBytes($source)
+   $tempName = 'config.yaml.recovery-' + [guid]::NewGuid().ToString('N') + '.tmp'
+   $tempPath = Join-Path $continueHome $tempName
+   $stream = $null
+   $published = $false
+   try {
+       $stream = [System.IO.File]::Open(
+           $tempPath,
+           [System.IO.FileMode]::CreateNew,
+           [System.IO.FileAccess]::Write,
+           [System.IO.FileShare]::None
+       )
+       $stream.Write($sourceBytes, 0, $sourceBytes.Length)
+       $stream.Flush($true)
+       $stream.Dispose()
+       $stream = $null
+       [System.IO.File]::Move($tempPath, $target)
+       $published = $true
+   }
+   finally {
+       if ($null -ne $stream) {
+           $stream.Dispose()
+       }
+       if (-not $published -and (Test-Path -LiteralPath $tempPath -PathType Leaf)) {
+           [System.IO.File]::Delete($tempPath)
+       }
+   }
+
+   $recoveryHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+   ```
+
+   `File.Move` stays on one volume and refuses an existing destination. The
+   hash belongs only to the new recovery-owned YAML, never to a pre-existing
+   user config or dotenv file.
+
+5. Reload VS Code: `Ctrl+Shift+P` → `Developer: Reload Window`.
+6. Open Continue: `Ctrl+Shift+P` → `Continue: Focus Continue Chat`.
+7. Confirm the expected profile loads without a `config error` banner.
+
+At this point a legacy JSON migration warning is acceptable. YAML remains
+selected; this is a migration warning, not fallback selection.
+
+**Phase 2 — only after Phase 1 PASS:**
+
+1. Generate a unique archive name at execution time, precheck its absence,
+   and rename legacy JSON without overwrite:
+
+   ```powershell
+   $legacyJson = Join-Path $continueHome 'config.json'
+   $backupName = 'config.json.recovery-' +
+       (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') +
+       '-' + [guid]::NewGuid().ToString('N') + '.bak'
+   $legacyBackup = Join-Path $continueHome $backupName
+
+   if (-not (Test-Path -LiteralPath $legacyJson -PathType Leaf)) {
+       throw 'Legacy config.json is absent; stop.'
+   }
+   if (Test-Path -LiteralPath $legacyBackup) {
+       throw 'Generated backup name already exists; stop.'
+   }
+   [System.IO.File]::Move($legacyJson, $legacyBackup)
+   ```
+
+2. Reload VS Code.
+3. Confirm the legacy migration warning is gone.
+
+### Rollback
+
+Rollback is allowed only while `$recoveryHash`, `$target`, and, if Phase 2
+ran, `$legacyBackup` still identify this recovery session:
+
+```powershell
+if (Test-Path -LiteralPath $target -PathType Leaf) {
+    $targetItem = Get-Item -LiteralPath $target
+    if (($targetItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Recovery target became a reparse point; do not delete it.'
+    }
+    $currentHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+    if (-not $recoveryHash -or $currentHash -ne $recoveryHash) {
+        throw 'Recovery target changed; do not delete user-owned state.'
+    }
+    [System.IO.File]::Delete($target)
+}
+
+if ($legacyBackup) {
+    $legacyJson = Join-Path $continueHome 'config.json'
+    if (Test-Path -LiteralPath $legacyJson) {
+        throw 'config.json now exists; do not overwrite it.'
+    }
+    if (-not (Test-Path -LiteralPath $legacyBackup -PathType Leaf)) {
+        throw 'Recorded legacy backup is absent; stop.'
+    }
+    [System.IO.File]::Move($legacyBackup, $legacyJson)
+}
+```
+
+If the variables or matching recovery hash are lost, stop and inspect
+manually; do not guess ownership.
+
+### What NOT to do
+
+- Do not use recursive delete/copy/restore on `%USERPROFILE%\.continue`.
+- Do not use `-Force`, overwrite, or a fixed backup name.
+- Do not touch `index/`, `cache/`, `skills/`, `dev_data/`, `types/`,
+  `sessions/`, or `.env`.
+- Do not hash or read pre-existing config or dotenv files. Only the new
+  recovery-owned YAML is hashed above.
+- Do not run Continue loaders/helpers against the user directory during
+  diagnosis.
+- Do not treat YAML presence as validity: empty YAML can be silently replaced
+  by Continue 2.0.
+- Do not describe a migration warning as JSON fallback while valid YAML is
+  selected.
+- Do not confuse built-in VS Code Chat with Continue. Use
+  `Continue: Focus Continue Chat`.
+- Do not recreate deleted smoke files from stale hot-exit buffers.

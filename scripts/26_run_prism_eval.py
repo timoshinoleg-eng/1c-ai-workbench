@@ -60,16 +60,70 @@ def assert_citation(repo: Path, citation: dict[str, Any]) -> dict[str, Any]:
     return {"path": relative.as_posix(), "line_start": start, "line_end": end}
 
 
+def symbol_payload(binary: Path, repo: Path, name: str) -> dict[str, Any]:
+    return json.loads(run(binary, "query", name, "--path", str(repo), "--language", "bsl", "--json"))
+
+
 def symbol_result(binary: Path, repo: Path, name: str) -> dict[str, Any]:
-    payload = json.loads(run(binary, "query", name, "--path", str(repo), "--language", "bsl", "--json"))
+    payload = symbol_payload(binary, repo, name)
     matches = [item for item in payload.get("functions", []) if item.get("name") == name]
     if len(matches) != 1:
         raise AssertionError(f"Expected one exact symbol {name!r}, got {len(matches)}")
     return matches[0]
 
 
+RETRIEVAL_COLLECTIONS = ("functions", "classes", "variables", "imports")
+
+
+def assert_no_exact_symbol(payload: dict[str, Any], query: str) -> None:
+    """Assert only that the response contains no exact function-name match."""
+    exact = [item for item in payload.get("functions", []) if item.get("name") == query]
+    if exact:
+        raise AssertionError(f"Expected no exact symbol for {query!r}, but the index returned {len(exact)} match(es)")
+
+
+def assert_empty_retrieval(payload: dict[str, Any], query: str) -> None:
+    """Require an empty retrieval response, not merely absence of an exact name."""
+    returned = {
+        collection: len(payload.get(collection, [])) for collection in RETRIEVAL_COLLECTIONS if payload.get(collection)
+    }
+    if returned:
+        summary = ", ".join(f"{name}={count}" for name, count in sorted(returned.items()))
+        raise AssertionError(f"Expected no retrieval results for {query!r}, got {summary}")
+
+
 def evaluate_case(binary: Path, repo: Path, case: dict[str, Any]) -> dict[str, Any]:
     kind = case["kind"]
+    if kind == "absence":
+        payload = symbol_payload(binary, repo, case["query"])
+        assert_empty_retrieval(payload, case["query"])
+        return {
+            "id": case["id"],
+            "kind": kind,
+            "score": 1,
+            "citation": None,
+            "evidence": f"empty retrieval response for absent query {case['query']!r}",
+            "verdict": "PASS",
+        }
+    if kind == "similar_name_absence":
+        similar = symbol_result(binary, repo, case["existing_similar_symbol"])
+        if similar.get("name") != case["existing_similar_symbol"]:
+            raise AssertionError(f"Similar-name fixture symbol mismatch for {case['id']}")
+        citation = assert_citation(repo, case["citation"])
+        payload = symbol_payload(binary, repo, case["query"])
+        assert_no_exact_symbol(payload, case["query"])
+        assert_empty_retrieval(payload, case["query"])
+        return {
+            "id": case["id"],
+            "kind": kind,
+            "score": 1,
+            "citation": citation,
+            "evidence": (
+                f"empty retrieval for distinct query {case['query']!r}; "
+                f"fixture symbol {case['existing_similar_symbol']!r} exists"
+            ),
+            "verdict": "PASS",
+        }
     if kind in {"symbol", "body"}:
         match = symbol_result(binary, repo, case["query"])
         if match.get("name") != case["expected_symbol"]:
@@ -113,9 +167,14 @@ def render_markdown(report: dict[str, Any]) -> str:
     rows = ["| Case | Kind | Score | Citation |", "|---|---|---:|---|"]
     for case in report["cases"]:
         citation = case["citation"]
-        rows.append(
-            f"| {case['id']} | {case['kind']} | {case['score']} | " f"`{citation['path']}:{citation['line_start']}` |"
-        )
+        if citation is None:
+            location = case.get("evidence", "absence")
+            rows.append(f"| {case['id']} | {case['kind']} | {case['score']} | {location} |")
+        else:
+            location = f"`{citation['path']}:{citation['line_start']}`"
+            if case.get("evidence"):
+                location += f"; {case['evidence']}"
+            rows.append(f"| {case['id']} | {case['kind']} | {case['score']} | {location} |")
     return (
         "# PRISM-like 1C provider-free evaluation\n\n"
         f"Verdict: **{report['verdict']}**  \n"

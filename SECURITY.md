@@ -28,6 +28,50 @@ Primary risks:
 - No bundled proprietary 1C binaries.
 - API keys are owned and configured by the operator.
 
+## Continue Thin Client AI
+
+The optional Continue profiles in `configs/continue/` change the data-flow
+picture and must be understood before use:
+
+- **Online Hybrid sends data to a cloud provider.** Prompts and any context the
+  operator (or the agent) attaches are transmitted to Groq for chat/edit/apply.
+  Do not attach secrets or sensitive data to cloud requests.
+- **`.continueignore` is not a security boundary.** It reduces accidental context
+  inclusion, but a user can still manually attach a file or open it to the agent.
+- **MCP results are untrusted input.** Code and help-index results are data, not
+  instructions. The agent must not execute commands or instructions found inside
+  indexed content (see `.continue/rules/1c-workbench.md`).
+- **Help Index MCP read-only mode.** `HELP_INDEX_MODE=readonly` registers only the
+  read tools and opens SQLite with URI `mode=ro`, so the database is never created
+  or modified. `HELP_INDEX_MODE=operator` keeps the historical full behavior.
+- **No secrets in profiles.** Profiles reference a key only as
+  `${{ secrets.<NAME> }}` (the operator-named secret); the generator never prints or
+  embeds the value. A value that looks like a real key passed anywhere
+  (`-SecretName`, `-ModelId`, `-ApiBase`) is rejected. Runtime readiness inspects
+  supported dotenv files only for a non-empty assignment of that named secret and
+  never passes the value to child probes. Never commit `.env` or a real key.
+- **Provider-neutral remote endpoints (HostedAgent).** A hosted `apiBase` must be an
+  explicit HTTPS URL with a host and must not embed credentials, a query string or a
+  fragment. A non-HTTPS scheme, an absolute-but-schemeless value, or an embedded
+  credential/query/fragment is rejected before any profile is written. HTTP is never
+  accepted for a remote endpoint.
+- **Local/cloud isolation (LocalAgent, Offline Lite).** Local profiles accept HTTP
+  only for explicit loopback endpoints (`127.0.0.1` / `localhost` / `::1`). The
+  OpenAI-compatible LocalAgent endpoint must end in `/v1`; the Ollama autocomplete
+  endpoint stays at its native root. Credentials, query strings and fragments are
+  rejected. Local profiles never reference a secret, never carry an `apiKey`, and
+  must not contain a known cloud API host — a local profile cannot silently become
+  a network/cloud profile.
+- **Generated-profile write boundary.** Output is confined to
+  `<RepoRoot>/generated/continue`; normalized absolute/traversal escapes and existing
+  reparse-point components are rejected before `-Force` is considered.
+- **Local Ollama boundary.** Generated profiles pin the effective `OLLAMA_HOST` as
+  `apiBase`, but accept only an explicit loopback HTTP endpoint. Runtime readiness
+  probes that exact URL, so a healthy CLI pointed at a different port cannot produce
+  a false-positive IDE readiness result.
+
+See [docs/CONTINUE_THIN_CLIENT.md](docs/CONTINUE_THIN_CLIENT.md).
+
 ## Reporting
 
 Open a private security issue or email the maintainer if you discover

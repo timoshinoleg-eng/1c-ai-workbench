@@ -1,0 +1,25 @@
+# 1C AI Workbench — Offline Lite (Continue config.yaml template, schema v1).
+#
+# Honest scope: autocomplete only.
+#   - Single local Ollama model qwen2.5-coder:1.5b-base for tab autocomplete.
+#   - No Groq or any other cloud provider, no cloud API URL, no API key/secret.
+#   - No mcpServers: this profile cannot call the code/help indexes by itself.
+#   - No embeddings, no rerank, no vector store, no @Codebase.
+#   - No chat/edit/apply roles: it is NOT a full local AI agent.
+#
+# To use the local 1C MCP indexes you need the Online Hybrid profile (which
+# requires a cloud model for reasoning) or a separate MCP client.
+name: "Offline Lite — autocomplete only"
+version: 1.0.0
+schema: v1
+models:
+  - name: "Qwen 2.5 Coder 1.5B (Ollama — autocomplete only)"
+    provider: ollama
+    model: "qwen2.5-coder:1.5b-base"
+    apiBase: '{{OLLAMA_API_BASE}}'
+    roles:
+      - autocomplete
+    autocompleteOptions:
+      maxPromptTokens: 1024
+      debounceDelay: 300
+      onlyMyCode: true

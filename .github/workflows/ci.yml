@@ -21,6 +21,11 @@ jobs:
           fetch-depth: 0
       - name: Run gitleaks
         shell: bash
+        env:
+          GITLEAKS_EVENT_NAME: ${{ github.event_name }}
+          GITLEAKS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITLEAKS_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITLEAKS_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           version="8.30.1"
@@ -29,7 +34,44 @@ jobs:
           curl --fail --location --silent --show-error "$url" --output "$archive"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
           tar -xzf "$archive" gitleaks
-          ./gitleaks git --redact --verbose .
+
+          require_sha() {
+            local sha="$1"
+            local label="$2"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Invalid $label commit SHA for gitleaks."
+              exit 2
+            fi
+          }
+
+          require_sha "$GITLEAKS_HEAD_SHA" "head"
+          case "$GITLEAKS_EVENT_NAME" in
+            pull_request)
+              require_sha "$GITLEAKS_BASE_SHA" "pull request base"
+              log_opts="$GITLEAKS_BASE_SHA..$GITLEAKS_HEAD_SHA"
+              ;;
+            push)
+              if [[ "$GITLEAKS_BEFORE_SHA" =~ ^0{40}$ ]]; then
+                log_opts="$GITLEAKS_HEAD_SHA"
+              else
+                require_sha "$GITLEAKS_BEFORE_SHA" "push before"
+                if git cat-file -e "$GITLEAKS_BEFORE_SHA^{commit}" 2>/dev/null; then
+                  log_opts="$GITLEAKS_BEFORE_SHA..$GITLEAKS_HEAD_SHA"
+                else
+                  log_opts="$GITLEAKS_HEAD_SHA"
+                fi
+              fi
+              ;;
+            workflow_dispatch)
+              log_opts="$GITLEAKS_HEAD_SHA"
+              ;;
+            *)
+              echo "::error::Unsupported event for gitleaks: $GITLEAKS_EVENT_NAME"
+              exit 2
+              ;;
+          esac
+
+          ./gitleaks git --redact --verbose --log-opts="$log_opts" .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
@@ -174,6 +216,11 @@ jobs:
           .\scripts\setup.ps1 -SkipBinaryDownload
           $fixture = Join-Path $PWD 'tools\cc-1c-skills\tests\skills\cases\interface-edit\snapshots\basic'
           .\scripts\04_index_1c_dump.ps1 -DumpRoot $fixture -Force
+      - name: Python behavioral tests
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -m pip install pytest==8.4.2 pytest-asyncio==1.4.0
+          .\.venv\Scripts\python.exe -m pytest -q
       - name: Run smoke scripts
         shell: pwsh
         run: |
@@ -308,6 +355,8 @@ jobs:
   # Отделён от rust-build, чтобы:
   #   * не задерживать PR-проверки (rust-build быстрый, cargo-integration тяжёлый);
   #   * иметь отдельный артефакт test-report для дебага.
+  # Логи сохраняются в стабильном текстовом формате: test-harness JSON и
+  # report-time требуют nightly Rust и не должны маскироваться в stable CI.
   # CARGO_TARGET_DIR явно не задан — cargo кладёт target в ./target/ относительно
   # workspace root, что совпадает с rust-build (тот же rust-cache вейркспейс).
   cargo-integration:
@@ -327,20 +376,16 @@ jobs:
         run: cargo build --release --workspace --all-features
       - name: Unit tests
         working-directory: tools/code-index-mcp
-        run: cargo test --workspace --all-features --no-fail-fast -- --format=json --report-time > cargo-test-unit.json 2> cargo-test-unit.stderr
-        continue-on-error: true
+        run: cargo test --workspace --all-features --no-fail-fast > cargo-test-unit.log 2>&1
       - name: Integration tests (heavy, --ignored)
         working-directory: tools/code-index-mcp
-        run: cargo test --workspace --all-features --no-fail-fast -- --ignored --format=json --report-time > cargo-test-integration.json 2> cargo-test-integration.stderr
-        continue-on-error: true
+        run: cargo test --workspace --all-features --no-fail-fast -- --ignored > cargo-test-integration.log 2>&1
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cargo-test-report
           path: |
-            tools/code-index-mcp/cargo-test-unit.json
-            tools/code-index-mcp/cargo-test-unit.stderr
-            tools/code-index-mcp/cargo-test-integration.json
-            tools/code-index-mcp/cargo-test-integration.stderr
+            tools/code-index-mcp/cargo-test-unit.log
+            tools/code-index-mcp/cargo-test-integration.log
           if-no-files-found: warn

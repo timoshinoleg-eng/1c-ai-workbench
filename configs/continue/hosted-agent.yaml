@@ -1,0 +1,60 @@
+# 1C AI Workbench — Hosted Agent (Continue config.yaml template, schema v1).
+#
+# Provider-neutral "bring your own key / bring your own model" profile.
+#
+# Architecture:
+#   - One user-chosen OpenAI-compatible hosted model for chat/edit/apply and
+#     Agent-mode reasoning. The operator supplies an HTTPS apiBase, a model ID
+#     and the NAME of a Continue secret (never the key value).
+#   - Local autocomplete only: Ollama qwen2.5-coder:1.5b-base.
+#   - Local exact retrieval: 1c-code-index MCP and 1c-help-index MCP (read-only).
+#   - No embeddings, no LanceDB/vector store, no @Codebase, no local chat model.
+#
+# The double-curly placeholders are replaced by scripts/28_prepare_continue_profile.ps1.
+# The API key is referenced ONLY as ${{ secrets.<NAME> }}; never paste a real key.
+# The secret NAME is uppercased and validated — a literal key value is rejected.
+name: "1C AI Workbench — Hosted Agent (provider-neutral)"
+version: 1.0.0
+schema: v1
+models:
+  - name: '{{HOSTED_DISPLAY_NAME}}'
+    provider: openai
+    model: '{{HOSTED_MODEL_ID}}'
+    apiKey: '{{HOSTED_SECRET_REF}}'
+    apiBase: '{{HOSTED_API_BASE}}'
+    capabilities:
+      - tool_use
+    roles:
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      temperature: 0.2 # {{HOSTED_TEMPERATURE}}
+  - name: "Qwen 2.5 Coder 1.5B (Ollama — autocomplete only)"
+    provider: ollama
+    model: "qwen2.5-coder:1.5b-base"
+    apiBase: '{{OLLAMA_API_BASE}}'
+    roles:
+      - autocomplete
+    autocompleteOptions:
+      maxPromptTokens: 1024
+      debounceDelay: 300
+      onlyMyCode: true
+mcpServers:
+  - name: 1c-code-index
+    command: '{{CODE_INDEX_EXE}}'
+    args:
+      - serve
+      - --path
+      - 'onec={{SOURCE_MIRROR}}'
+      - --transport
+      - stdio
+    env:
+      CODE_INDEX_HOME: '{{CODE_INDEX_HOME}}'
+  - name: 1c-help-index
+    command: '{{PYTHON_EXE}}'
+    args:
+      - '{{HELP_SERVER_PY}}'
+    env:
+      HELP_INDEX_MODE: readonly
+      WORKBENCH_ROOT: '{{WORKBENCH_ROOT}}'

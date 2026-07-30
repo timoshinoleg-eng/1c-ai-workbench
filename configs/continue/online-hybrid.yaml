@@ -1,0 +1,67 @@
+# 1C AI Workbench — Online Hybrid (Continue config.yaml template, schema v1).
+#
+# Architecture:
+#   - Cloud reasoning/chat/edit/apply: Groq, two selectable models.
+#   - Local autocomplete only: Ollama qwen2.5-coder:1.5b-base.
+#   - Local exact retrieval: 1c-code-index MCP and 1c-help-index MCP (read-only).
+#   - No embeddings, no LanceDB/vector store, no @Codebase, no local chat/agent model.
+#
+# The double-curly path placeholders are replaced with absolute paths by
+# scripts/28_prepare_continue_profile.ps1. The Groq key stays a Continue secret
+# reference; never paste a real API key into this file.
+name: "1C AI Workbench — Online Hybrid"
+version: 1.0.0
+schema: v1
+models:
+  - name: GPT-OSS 120B (Groq)
+    provider: groq
+    model: openai/gpt-oss-120b
+    apiKey: ${{ secrets.GROQ_API_KEY }}
+    capabilities:
+      - tool_use
+    roles:
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      temperature: 0.2
+  - name: "Qwen 3.6 27B (Preview — Groq)"
+    provider: groq
+    model: qwen/qwen3.6-27b
+    apiKey: ${{ secrets.GROQ_API_KEY }}
+    capabilities:
+      - tool_use
+    roles:
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      temperature: 0.2
+  - name: "Qwen 2.5 Coder 1.5B (Ollama — autocomplete only)"
+    provider: ollama
+    model: "qwen2.5-coder:1.5b-base"
+    apiBase: '{{OLLAMA_API_BASE}}'
+    roles:
+      - autocomplete
+    autocompleteOptions:
+      maxPromptTokens: 1024
+      debounceDelay: 300
+      onlyMyCode: true
+mcpServers:
+  - name: 1c-code-index
+    command: '{{CODE_INDEX_EXE}}'
+    args:
+      - serve
+      - --path
+      - 'onec={{SOURCE_MIRROR}}'
+      - --transport
+      - stdio
+    env:
+      CODE_INDEX_HOME: '{{CODE_INDEX_HOME}}'
+  - name: 1c-help-index
+    command: '{{PYTHON_EXE}}'
+    args:
+      - '{{HELP_SERVER_PY}}'
+    env:
+      HELP_INDEX_MODE: readonly
+      WORKBENCH_ROOT: '{{WORKBENCH_ROOT}}'

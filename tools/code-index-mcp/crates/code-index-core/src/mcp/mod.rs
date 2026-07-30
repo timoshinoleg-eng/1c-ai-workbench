@@ -635,7 +635,7 @@ impl CodeIndexServer {
     ///
     /// Метод **потребляет self и возвращает Self** — удобно для chain'а
     /// после конструктора:
-    /// ```ignore
+    /// ```text
     /// let server = CodeIndexServer::from_federated(...)?
     ///     .apply_tools_whitelist(&daemon_cfg.tools.enabled);
     /// ```

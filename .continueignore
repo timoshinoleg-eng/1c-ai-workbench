@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 1c-ai-workbench contributors
+# SPDX-License-Identifier: MIT
+#
+# .continueignore — снижает случайное попадание файлов в контекст Continue.
+# Это НЕ граница безопасности: пользователь может вручную прикрепить файл или
+# открыть его агенту. Синтаксис — как у .gitignore.
+
+# Git и служебные данные
+.git/
+.github/
+
+# Секреты и локальные переменные окружения
+.env
+.env.*
+*.env
+secrets/
+*.key
+*.pfx
+*.p12
+
+# Сгенерированные артефакты, индексы и базы
+generated/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+.code-index/
+
+# Базы документации 1С (проприетарные, не коммитятся)
+*.hbk
+*.HBK
+
+# Бинарные и release-артефакты
+*.exe
+*.dll
+dist/
+installer/output/
+tools/code-index-mcp/target/
+tools/**/target/
+tools/**/bin/
+tools/**/obj/
+
+# Кеши и временные каталоги
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+logs/
+*.log
+tmp/
+temp/
+
+# Локальные операторские конфиги и агентские каталоги
+.vscode/
+.idea/
+.opencode/
+.qoder/
+.codegraph/
+.agents/
+.claude/
+.run-time/
