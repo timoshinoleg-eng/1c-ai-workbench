@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 1C AI Workbench contributors
+# SPDX-License-Identifier: MIT
+#
+# The listed historical commit contains an intentionally fake provider-key test
+# fixture. Scope the exception to that one commit rather than suppressing an
+# entire path, rule, branch, or future finding.
+[allowlist]
+description = "Historical fake API-key test fixture"
+commits = [
+  "3e53d1d8b772dbc4bc71cf97aa68aa27df546c17",
+]
