@@ -12,3 +12,11 @@ pub mod serve_cache; // In-process кэш результатов tool-вызов
 pub mod serve_dedup;
 pub mod storage; // SQLite-хранилище индекса
 pub mod watcher; // File watcher на базе notify // Сессионный дедуп ре-доставки строк результата (по mcp-session-id)
+
+#[cfg(test)]
+mod manus_fail_closed_ci_proof {
+    #[test]
+    fn intentionally_fails_to_prove_required_ci_gate() {
+        panic!("intentional fail-closed CI proof; do not merge this branch");
+    }
+}
