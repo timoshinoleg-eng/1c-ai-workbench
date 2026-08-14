@@ -23,10 +23,10 @@ Workbench готов для локального read-only использова�
 
 | Метрика | Цель | Факт |
 | --- | --- | --- |
-| `scripts/06_healthcheck.ps1` | 6/6 Ready | 6/6 Ready |
-| `python -m pytest -q` | all green | 67/67 passed |
-| `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | PASS: 8 / FAIL: 0 / SKIP: 1 |
-| `bsl-indexer.exe` (Rust) | built & in release | 25.6 MB |
+| `scripts/06_healthcheck.ps1` | 6/6 Ready | фиксируется в evidence bundle конкретного candidate SHA |
+| `python -m pytest -q` | all green | фиксируется командой, candidate SHA, окружением, timestamp и полным выводом |
+| `scripts/22_run_e2e_smoke.ps1 -SkipIndex` | all green | фиксируется в evidence bundle конкретного candidate SHA |
+| `bsl-indexer.exe` (Rust) | built & in release | фиксируется SHA-256 конкретного release artifact |
 
 ## Что решает
 

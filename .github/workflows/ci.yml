@@ -50,10 +50,15 @@ jobs:
       - name: Black check
         shell: pwsh
         run: black --check --diff tools/ scripts/
-      - name: Mypy
+      - name: Mypy baseline (advisory; existing typing debt)
         shell: pwsh
+        # Baseline at the public-main controlled-pilot candidate contains 18
+        # known errors across independently checked MCP servers. Keep the
+        # signal visible without representing it as a blocking gate until the
+        # debt is retired in a separately reviewed series.
+        continue-on-error: true
         run: |
-          mypy --install-types --non-interactive tools/skills-bridge/ tools/prompt-gallery/ tools/help-index-mcp/ || true
+          mypy --install-types --non-interactive tools/skills-bridge/ tools/prompt-gallery/ tools/help-index-mcp/
       - name: Optional adapters remain fail-closed
         shell: pwsh
         run: python scripts/27_validate_optional_adapters.py
