@@ -16,6 +16,7 @@ pub mod watcher; // File watcher на базе notify // Сессионный д
 #[cfg(test)]
 mod manus_fail_closed_ci_proof {
     #[test]
+    #[ignore = "must run only in Cargo integration tests (full) negative proof"]
     fn intentionally_fails_to_prove_required_ci_gate() {
         panic!("intentional fail-closed CI proof; do not merge this branch");
     }
