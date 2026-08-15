@@ -188,7 +188,8 @@ $iscc = Resolve-InnoCompiler $InnoCompiler
 Write-Ok "Using $iscc"
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$env:VCRUNTIME140_DLL = Stage-VcRuntime140 -DestinationRoot $OutputDir`r`n
+$env:VCRUNTIME140_DLL = Stage-VcRuntime140 -DestinationRoot $OutputDir
+
 $env:WORKBENCH_ROOT = $WorkbenchRoot
 $env:INSTALLER_OUTPUT_DIR = $OutputDir
 $env:APP_VERSION = $AppVersion
