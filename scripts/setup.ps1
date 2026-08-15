@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
   [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
   [string]$ReleaseTag = "",
@@ -32,7 +32,7 @@ function Find-Python {
   $py = Get-Command py -ErrorAction SilentlyContinue
   if ($py) { return @{ Command = $py.Source; Args = @("-3") } }
 
-  throw "Python 3.10+ not found. Install Python and rerun scripts\setup.ps1."
+  throw "64-bit CPython 3.11 not found. Install CPython 3.11 x64 and rerun scripts\setup.ps1."
 }
 
 function Invoke-HostPython {

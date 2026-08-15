@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
   [string]$WorkbenchRoot = $(if ($PSScriptRoot) { Split-Path -Parent $PSScriptRoot } else { $PWD.Path }),
   [string]$AppVersion = "0.1.0",
@@ -14,6 +14,30 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+function Stage-VcRuntime140([string]$DestinationRoot) {
+  $source = Join-Path $env:SystemRoot "System32\VCRUNTIME140.dll"
+  if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+    throw "Required Microsoft CRT runtime is missing from build host: $source"
+  }
+  $signature = Get-AuthenticodeSignature -LiteralPath $source
+  if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Subject -notmatch "Microsoft") {
+    throw "Refusing unsigned or non-Microsoft VCRUNTIME140.dll: $($signature.Status) $($signature.SignerCertificate.Subject)"
+  }
+  $runtimeDir = Join-Path $DestinationRoot "_runtime"
+  New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+  $destination = Join-Path $runtimeDir "VCRUNTIME140.dll"
+  Copy-Item -LiteralPath $source -Destination $destination -Force
+  $hash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+  [ordered]@{
+    file = "VCRUNTIME140.dll"
+    sha256 = $hash
+    signature_status = $signature.Status.ToString()
+    signer_subject = $signature.SignerCertificate.Subject
+    staged_from = $source
+  } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtimeDir "VCRUNTIME140.dll.provenance.json") -Encoding UTF8
+  Write-Ok "Staged verified Microsoft VCRUNTIME140.dll ($hash)"
+  return $destination
+}
 
 function Write-Step([string]$Message) { Write-Host "[INFO] $Message" -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" -ForegroundColor Green }
@@ -164,6 +188,7 @@ $iscc = Resolve-InnoCompiler $InnoCompiler
 Write-Ok "Using $iscc"
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$env:VCRUNTIME140_DLL = Stage-VcRuntime140 -DestinationRoot $OutputDir
 
 $env:WORKBENCH_ROOT = $WorkbenchRoot
 $env:INSTALLER_OUTPUT_DIR = $OutputDir

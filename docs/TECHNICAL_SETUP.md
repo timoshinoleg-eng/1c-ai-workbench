@@ -142,3 +142,11 @@ cd <workbench-root>
 Сценарий рассказа: `demo-showcase\TALK_TRACK.md`.
 
 ## 13. Инструкция для бизнес-партнёра
+
+Используйте настоящий документ вместе с WINDOWS_EXE_INSTALLER.md при передаче проверенного offline deployment package.
+
+## Phase C prerequisite contract
+
+The packaged `bsl-indexer.exe` requires an app-local, Microsoft-signed `VCRUNTIME140.dll`; the installer build stages this runtime only after signature validation. The application setup requires a **full 64-bit CPython 3.11** runtime. It creates a virtual environment with `venv` and `ensurepip`, then installs only from the bundled offline wheelhouse.
+
+The embeddable CPython archive is not supported for this setup path because it does not provide the `venv`, `ensurepip`, and `pip` components. Production deployment must therefore stage or install a verified full CPython 3.11 x64 runtime before running `scripts\setup.ps1` offline.

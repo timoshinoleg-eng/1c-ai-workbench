@@ -20,6 +20,10 @@
   #define OutputRoot "..\dist\installer"
 #endif
 #define OfflineWheelhouse GetEnv("OFFLINE_WHEELHOUSE")
+#define VcRuntime140 GetEnv("VCRUNTIME140_DLL")
+#if VcRuntime140 == ""
+  #define VcRuntime140 "..\dist\installer-runtime\VCRUNTIME140.dll"
+#endif
 
 [Setup]
 AppId={{{#AppIdValue}
@@ -51,6 +55,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+; bsl-indexer.exe dynamically imports this Microsoft CRT runtime. The build script
+; stages a signature-validated copy app-local so a clean Windows install can load it.
+Source: "{#VcRuntime140}"; DestDir: "{app}\tools\code-index-mcp\target\release"; DestName: "VCRUNTIME140.dll"; Flags: ignoreversion
 Source: "{#SourceRoot}\.gitignore"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\AI_RULES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\AUTHORS.md"; DestDir: "{app}"; Flags: ignoreversion
