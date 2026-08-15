@@ -77,7 +77,7 @@ mirror. Исходная выгрузка не изменяется, live write 
 - Windows 10/11.
 - PowerShell 5.1+.
 - Git for Windows.
-- Python 3.10+ для Python MCP bridges.
+- 64-bit CPython 3.11 для Python MCP bridges и офлайн-setup. Другие версии не являются поддерживаемым production prerequisite.
 - Подписанный installer с prebuilt `bsl-indexer.exe`, проверенный release artifact
   либо Rust toolchain для сборки индексатора из исходников.
 - Файлы выгрузки конфигурации 1С в `C:\1c-ai-client\dump`.

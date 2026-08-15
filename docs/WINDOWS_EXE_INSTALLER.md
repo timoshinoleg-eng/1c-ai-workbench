@@ -109,6 +109,8 @@ user-data preservation, and silent uninstall. CI also proves that
 
 ## External production prerequisite
 
+> **Python contract.** The installer intentionally does not embed Python. Offline setup requires a **full 64-bit CPython 3.11 runtime** with `venv` and `ensurepip` available; the embeddable archive is not sufficient. A signed runtime may be staged offline before installation, and `scripts\setup.ps1` fail-closes if the required interpreter contract is absent.
+
 The repository can prove all unsigned behavior and the fail-closed signing path.
 Actual CA trust, timestamp availability, and Microsoft SmartScreen reputation
 can only be verified after a real production Authenticode certificate is
