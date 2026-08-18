@@ -5,6 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# If PowerShell blocks this script, inspect Get-ExecutionPolicy -List and follow docs\ENTERPRISE_FIRST_RUN.md.
+# Do not disable ExecutionPolicy globally; use an approved CurrentUser or enterprise policy instead.
 $WorkbenchRoot = [System.IO.Path]::GetFullPath($WorkbenchRoot).TrimEnd('\')
 Set-Location -LiteralPath $WorkbenchRoot
 
@@ -16,6 +18,22 @@ function Wait-Menu { [void](Read-Host "Press Enter to return to menu") }
 function Resolve-WorkbenchPath([string]$RelativePath) {
   return Join-Path $WorkbenchRoot $RelativePath
 }
+
+function Resolve-LocalDumpPath([string]$Value) {
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    throw "DumpPath must not be empty."
+  }
+  if ($Value -match '^(\\\\|//|\\\\\?\\|\\\\\.\\)') {
+    throw "DumpPath must be a local drive path; UNC and device paths are not allowed: $Value"
+  }
+  $fullPath = [System.IO.Path]::GetFullPath($Value)
+  if ($fullPath -notmatch '^[A-Za-z]:\\') {
+    throw "DumpPath must be an absolute local Windows drive path, for example C:\\1c-ai-client\\dump: $Value"
+  }
+  return $fullPath.TrimEnd('\\')
+}
+
+$DumpPath = Resolve-LocalDumpPath $DumpPath
 
 function Invoke-WorkbenchCommand([string]$Title, [scriptblock]$Command) {
   Write-Host ""
@@ -51,7 +69,7 @@ function Update-OpencodeConfig {
 }
 
 function Show-DumpFolder {
-  $fullDumpPath = [System.IO.Path]::GetFullPath($DumpPath)
+  $fullDumpPath = $DumpPath
   New-Item -ItemType Directory -Force -Path $fullDumpPath | Out-Null
   Write-Info "1C dump folder: $fullDumpPath"
   Write-Host "Export the 1C configuration files into this folder, then run menu item 4."

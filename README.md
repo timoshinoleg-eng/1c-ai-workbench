@@ -90,8 +90,10 @@ mirror. Исходная выгрузка не изменяется, live write 
 
 ## Быстрый старт
 
+Сначала прочитайте [инструкцию первого запуска в корпоративной среде](docs/ENTERPRISE_FIRST_RUN.md). Не отключайте ExecutionPolicy глобально. Если политика CurrentUser не управляется доменом, предпочтительный вариант:
+
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\16_check_skills_bridge.ps1
@@ -111,7 +113,6 @@ cd <workbench-root>
 Ручной путь:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 cd <workbench-root>
 .\scripts\setup.ps1
 .\scripts\01_check_env.ps1
@@ -121,13 +122,13 @@ cd <workbench-root>
 ```
 
 `scripts\03_build_bsl_indexer.ps1` нужен только разработчикам, которым нужно
-пересобрать Rust-бинарник локально вместо использования release artifact.
+пересобрать Rust-бинарник локально вместо использования release artifact. Порядок проверки release artifact, SHA-256, версии и подписи описан в [release evidence guide](docs/RELEASE_EVIDENCE.md). Назначение всех команд разделено в [script catalog](docs/SCRIPT_CATALOG.md).
 
 ## MCP-серверы
 
 ### `1c-code-index`
 
-Основной Rust MCP-сервер. Индексирует и отдаёт BSL/code metadata.
+Основной Rust MCP-сервер. Индексирует и отдаёт BSL/code metadata. Перед планированием новых search/metadata tools сверьтесь с [feature-gap map](docs/FEATURE_GAP_MAP.md), чтобы не дублировать возможности текущего индексатора.
 
 ```powershell
 .\tools\code-index-mcp\target\release\bsl-indexer.exe serve --path onec=.\generated\index\source-mirror --transport stdio
@@ -219,5 +220,4 @@ Write operations заблокированы без `IBCMD_ALLOW_WRITE=1` и `con
 ## Commercial
 
 Commercial pilots (premium prompts, golden answers, enterprise playbook,
-named support) are available from the maintainer.
-See [docs/COMMERCIAL.md](docs/COMMERCIAL.md) or contact the maintainer directly.
+named support) are available from the maintainer. See [docs/COMMERCIAL.md](docs/COMMERCIAL.md), [pilot runbook](docs/PILOT_RUNBOOK.md) and [technical acceptance checklist](docs/PILOT_ACCEPTANCE_CHECKLIST.md).
