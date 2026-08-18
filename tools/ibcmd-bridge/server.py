@@ -32,7 +32,10 @@ class ArgsModel(BaseModel):
 
 
 class ConnectionArgs(ArgsModel):
-    ibcmd_exe: str | None = Field(default=None, description="Path to ibcmd.exe or command name.")
+    ibcmd_exe: str | None = Field(
+        default=None,
+        description="Optional literal 'ibcmd'. Absolute executable paths are configured server-side through IBCMD_EXE.",
+    )
     config_file: str | None = Field(default=None, description="Standalone server config.yml path.")
     data_path: str | None = Field(default=None, description="Standalone server data directory.")
     db_path: str | None = Field(default=None, description="File infobase path.")
@@ -106,18 +109,66 @@ def json_result(tool: str, ok: bool, started: float, data: dict[str, Any]) -> st
 
 
 def exe_path(value: str | None) -> str:
-    raw = value or os.environ.get("IBCMD_EXE") or "ibcmd"
+    """Resolve ibcmd using server policy, not an arbitrary MCP-client executable path.
+
+    A client may request the literal ``ibcmd`` resolved through PATH. An absolute executable
+    is accepted only when it exactly matches the trusted server-side ``IBCMD_EXE`` setting.
+    This keeps a normal 1C platform installation outside WORKBENCH_ROOT usable while
+    preventing a client from replacing the process to be launched.
+    """
+    configured = os.environ.get("IBCMD_EXE")
+    if value and value != "ibcmd" and value != configured:
+        raise PermissionError("absolute ibcmd_exe values are configured server-side only; set IBCMD_EXE on the MCP host")
+    raw = configured or "ibcmd"
     if raw == "ibcmd":
         return raw
     candidate = Path(raw).expanduser()
     if not candidate.is_absolute():
         raise ValueError(
-            "ibcmd_exe / IBCMD_EXE must be either the literal 'ibcmd' (resolved via PATH) "
-            f"or an absolute path to an existing executable. Got relative value: {raw}"
+            "IBCMD_EXE must be either the literal 'ibcmd' (resolved via PATH) "
+            f"or an absolute path to an existing executable. Got: {raw}"
         )
-    if not candidate.exists():
-        raise FileNotFoundError(f"ibcmd executable not found at resolved path: {candidate}")
-    return str(candidate)
+    if not candidate.exists() or not candidate.is_file():
+        raise FileNotFoundError(f"configured ibcmd executable not found at resolved path: {candidate}")
+    return str(candidate.resolve())
+
+
+def display_workbench_path(path: Path, root: Path = WORKBENCH_ROOT) -> str:
+    """Return a stable relative path for MCP output without exposing local filesystem details."""
+    safe_path = path_within_root(path, root)
+    if safe_path is None:
+        return "<external path redacted>"
+    return safe_path.relative_to(root.resolve()).as_posix() or "."
+
+
+def connection_tool_kwargs(
+    *,
+    ibcmd_exe: str | None,
+    config_file: str | None,
+    data_path: str | None,
+    db_path: str | None,
+    dbms: str | None,
+    db_server: str | None,
+    db_name: str | None,
+    db_user: str | None,
+    db_password_env: str | None,
+    user: str | None,
+    password_env: str | None,
+) -> dict[str, object]:
+    """Build the exact public tool payload; never forward implementation locals."""
+    return {
+        "ibcmd_exe": ibcmd_exe,
+        "config_file": config_file,
+        "data_path": data_path,
+        "db_path": db_path,
+        "dbms": dbms,
+        "db_server": db_server,
+        "db_name": db_name,
+        "db_user": db_user,
+        "db_password_env": db_password_env,
+        "user": user,
+        "password_env": password_env,
+    }
 
 
 def env_secret(name: str | None) -> str | None:
@@ -331,7 +382,7 @@ async def _export_config(started: float, **kwargs: object) -> str:
             {
                 "dry_run": True,
                 "command": redacted(command),
-                "output_dir": str(output_dir),
+                "output_dir": display_workbench_path(output_dir),
             },
         )
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -383,7 +434,7 @@ async def _import_config(started: float, **kwargs: object) -> str:
             {
                 "dry_run": True,
                 "command": redacted(command),
-                "input_dir": str(input_dir),
+                "input_dir": display_workbench_path(input_dir),
             },
         )
     try:
@@ -521,7 +572,7 @@ async def _export_and_index(started: float, **kwargs: object) -> str:
             started,
             {
                 "error": "bsl-indexer.exe not found",
-                "path": str(bsl_indexer),
+                "path": display_workbench_path(bsl_indexer, workbench_root),
                 "export_result": export_result,
             },
         )
@@ -575,8 +626,8 @@ async def _compare_exports(started: float, **kwargs: object) -> str:
             started,
             {
                 "error": "left_dir and right_dir must be existing directories",
-                "left_dir": str(left),
-                "right_dir": str(right),
+                "left_dir": display_workbench_path(left),
+                "right_dir": display_workbench_path(right),
             },
         )
     left_map = snapshot_dir(left)
@@ -591,8 +642,8 @@ async def _compare_exports(started: float, **kwargs: object) -> str:
         True,
         started,
         {
-            "left_dir": str(left),
-            "right_dir": str(right),
+            "left_dir": display_workbench_path(left),
+            "right_dir": display_workbench_path(right),
             "counts": {
                 "added": len(added),
                 "removed": len(removed),
@@ -631,7 +682,28 @@ async def ibcmd_export_config(
     timeout_sec: int = 600,
 ) -> str:
     """RU: Экспортировать конфигурацию ИБ в XML-файлы. EN: Export infobase configuration to XML files."""
-    return await safe("ibcmd_export_config", _export_config, **locals())
+    return await safe(
+        "ibcmd_export_config",
+        _export_config,
+        **connection_tool_kwargs(
+            ibcmd_exe=ibcmd_exe,
+            config_file=config_file,
+            data_path=data_path,
+            db_path=db_path,
+            dbms=dbms,
+            db_server=db_server,
+            db_name=db_name,
+            db_user=db_user,
+            db_password_env=db_password_env,
+            user=user,
+            password_env=password_env,
+        ),
+        output_dir=output_dir,
+        sync=sync,
+        force=force,
+        dry_run=dry_run,
+        timeout_sec=timeout_sec,
+    )
 
 
 @mcp.tool()
@@ -653,7 +725,27 @@ async def ibcmd_import_config(
     timeout_sec: int = 600,
 ) -> str:
     """RU: Импортировать XML в ИБ с явным write-gate. EN: Import XML into an infobase with explicit write gate."""
-    return await safe("ibcmd_import_config", _import_config, **locals())
+    return await safe(
+        "ibcmd_import_config",
+        _import_config,
+        **connection_tool_kwargs(
+            ibcmd_exe=ibcmd_exe,
+            config_file=config_file,
+            data_path=data_path,
+            db_path=db_path,
+            dbms=dbms,
+            db_server=db_server,
+            db_name=db_name,
+            db_user=db_user,
+            db_password_env=db_password_env,
+            user=user,
+            password_env=password_env,
+        ),
+        input_dir=input_dir,
+        confirm_replace=confirm_replace,
+        dry_run=dry_run,
+        timeout_sec=timeout_sec,
+    )
 
 
 @mcp.tool()
@@ -680,7 +772,32 @@ async def ibcmd_build_edt_import_plan(
     platform_version: str | None = None,
 ) -> str:
     """RU: Построить план экспорта ibcmd и импорта в EDT. EN: Build XML export plus EDT import command plan."""
-    return await safe("ibcmd_build_edt_import_plan", _edt_plan, **locals())
+    return await safe(
+        "ibcmd_build_edt_import_plan",
+        _edt_plan,
+        **connection_tool_kwargs(
+            ibcmd_exe=ibcmd_exe,
+            config_file=config_file,
+            data_path=data_path,
+            db_path=db_path,
+            dbms=dbms,
+            db_server=db_server,
+            db_name=db_name,
+            db_user=db_user,
+            db_password_env=db_password_env,
+            user=user,
+            password_env=password_env,
+        ),
+        output_dir=output_dir,
+        edt_project_dir=edt_project_dir,
+        workspace_dir=workspace_dir,
+        sync=sync,
+        force=force,
+        dry_run=dry_run,
+        timeout_sec=timeout_sec,
+        edt_cli_exe=edt_cli_exe,
+        platform_version=platform_version,
+    )
 
 
 @mcp.tool()
@@ -706,7 +823,31 @@ async def ibcmd_export_and_index(
     index_after_export: bool = True,
 ) -> str:
     """RU: Экспортировать конфигурацию ibcmd и переиндексировать dump. EN: Export configuration and refresh the code index."""
-    return await safe("ibcmd_export_and_index", _export_and_index, **locals())
+    return await safe(
+        "ibcmd_export_and_index",
+        _export_and_index,
+        **connection_tool_kwargs(
+            ibcmd_exe=ibcmd_exe,
+            config_file=config_file,
+            data_path=data_path,
+            db_path=db_path,
+            dbms=dbms,
+            db_server=db_server,
+            db_name=db_name,
+            db_user=db_user,
+            db_password_env=db_password_env,
+            user=user,
+            password_env=password_env,
+        ),
+        output_dir=output_dir,
+        sync=sync,
+        force=force,
+        dry_run=dry_run,
+        timeout_sec=timeout_sec,
+        workbench_root=workbench_root,
+        index_alias=index_alias,
+        index_after_export=index_after_export,
+    )
 
 
 @mcp.tool()

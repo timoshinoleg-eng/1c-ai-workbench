@@ -29,7 +29,7 @@ jobs:
           curl --fail --location --silent --show-error "$url" --output "$archive"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
           tar -xzf "$archive" gitleaks
-          ./gitleaks git --redact --verbose .
+          ./gitleaks git --config .gitleaks.toml --redact --verbose .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
@@ -57,6 +57,19 @@ jobs:
       - name: Optional adapters remain fail-closed
         shell: pwsh
         run: python scripts/27_validate_optional_adapters.py
+
+  python-tests:
+    name: Python unit and contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Install Python test dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Run Python tests
+        run: python -m pytest -q
 
   rust-build:
     name: Rust build & test (bsl-indexer)
