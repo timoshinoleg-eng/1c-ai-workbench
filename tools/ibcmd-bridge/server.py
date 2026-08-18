@@ -118,9 +118,7 @@ def exe_path(value: str | None) -> str:
     """
     configured = os.environ.get("IBCMD_EXE")
     if value and value != "ibcmd" and value != configured:
-        raise PermissionError(
-            "absolute ibcmd_exe values are configured server-side only; set IBCMD_EXE on the MCP host"
-        )
+        raise PermissionError("absolute ibcmd_exe values are configured server-side only; set IBCMD_EXE on the MCP host")
     raw = configured or "ibcmd"
     if raw == "ibcmd":
         return raw

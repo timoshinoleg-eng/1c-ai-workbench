@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Oleg Timoshin
+# SPDX-License-Identifier: MIT
+#
+# This allowlist is intentionally limited to a single synthetic value in an
+# historical test fixture. It does not suppress real credentials by path,
+# rule, or broad commit range.
+
+[allowlist]
+description = "Synthetic API-key-shaped value in historical test fixture"
+regexes = [
+  '''gsk_FAKEKEY_0123456789abcdef''',
+]

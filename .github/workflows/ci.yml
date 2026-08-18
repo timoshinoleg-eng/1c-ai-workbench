@@ -29,7 +29,7 @@ jobs:
           curl --fail --location --silent --show-error "$url" --output "$archive"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
           tar -xzf "$archive" gitleaks
-          ./gitleaks git --redact --verbose .
+          ./gitleaks git --config .gitleaks.toml --redact --verbose .
 
   python-lint:
     name: Python lint & format (ruff, black, mypy)
