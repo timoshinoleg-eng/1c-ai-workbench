@@ -38,6 +38,7 @@ path = [
     ".editorconfig",
     ".gitattributes",
     ".gitignore",
+    ".gitleaksignore",
     ".markdownlint.jsonc",
     ".prettierrc",
     ".eslintrc.cjs",
