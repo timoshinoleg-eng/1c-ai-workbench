@@ -84,10 +84,12 @@ used for CI/CD, demos and B2B pilot infrastructure.
 
 GitVerse detects workflows under `.gitverse/workflows/`.
 
-After importing/mirroring the repository:
+Import the repository into GitVerse as a regular repository, not as a mirror. GitVerse mirror repositories do not support CI/CD workflows or runners.
+
+After the regular import:
 
 1. enable CI/CD in repository settings if it is disabled;
-2. push the repository with `.gitverse/workflows/cloudru-ci.yml`;
+2. verify that `.gitverse/workflows/cloudru-ci.yml` is present;
 3. verify the first CI run;
 4. only after a green validation run, configure Cloud.ru credentials as
    protected secrets;
