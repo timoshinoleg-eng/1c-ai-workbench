@@ -1,0 +1,55 @@
+name: 1C AI Workbench — GitVerse / Cloud.ru preflight
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CLOUD_RU_PROJECT_ID: "9dcd962b-a943-4762-9b53-51ad3da59415"
+
+jobs:
+  validate:
+    name: Tests and Cloud.ru target validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run Python tests
+        run: python -m pytest -q
+
+      - name: Validate Cloud.ru project target
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import uuid
+
+          value = os.environ["CLOUD_RU_PROJECT_ID"]
+          parsed = uuid.UUID(value)
+          if str(parsed) != value:
+              raise SystemExit("CLOUD_RU_PROJECT_ID is not a canonical UUID")
+          print("Cloud.ru project target configured:", value)
+          print("Mode: validation-only; no cloud resources are created or changed.")
+          PY
+
+      - name: Cloud deployment guard
+        run: |
+          echo "Artifact Registry / Container Apps deployment is intentionally disabled."
+          echo "Enable CD only after protected GitVerse secrets are configured."
