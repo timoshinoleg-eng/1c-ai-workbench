@@ -17,7 +17,7 @@
 | Проверка | Текущий результат |
 | --- | --- |
 | Healthcheck | `6/6 Ready` |
-| Python tests | `67/67 passed` |
+| Python test suite | `68 passed` in Linux CI preflight |
 | E2E smoke | `PASS 8 / FAIL 0 / SKIP 1` |
 | Rust indexer | `bsl-indexer.exe`, 25.6 MB |
 | Release model | signed candidate → clean Windows verification → publish verified artifact |
@@ -244,7 +244,7 @@ Workflow находится в `.gitverse/workflows/cloudru-ci.yml`.
 
 ## Документация
 
-- [START_HERE.md](START_HERE.md) — точка входа;
+- `START_HERE.ps1` — интерактивная точка входа для Windows;
 - [AI_RULES.md](AI_RULES.md) — правила для AI-агентов;
 - [SECURITY.md](SECURITY.md) — threat model и hard defaults;
 - [docs/RELEASE_CONTRACT_V1.md](docs/RELEASE_CONTRACT_V1.md) — release process;
