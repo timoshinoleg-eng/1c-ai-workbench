@@ -1,0 +1,2 @@
+# Known synthetic API-key fixture used by tests; scoped to one historical fingerprint only.
+3e53d1d8b772dbc4bc71cf97aa68aa27df546c17:tests/test_continue_profiles.py:generic-api-key:752
